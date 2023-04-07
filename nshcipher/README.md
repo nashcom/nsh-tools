@@ -7,7 +7,7 @@ This simple test tool demonstates how to use TLS/SSL ciphers with OpenSSL.
 It can be used to dump all supported ciphers and also to connect to a remote server to check which ciphers are supported.  
 Server Name Indication (SNI) is used when connecting. SNI sends the reqested server in the handshake phase of the connection.  
 
-Syntax:
+## Syntax
 
 If started without parameters all ciphers are listed.
 
@@ -16,8 +16,8 @@ The connection assumes port 443. You can specify a different port to connect to.
 
 By default ECDSA and RSA signature algorithms are used. You may want to explictly specify only RSA ciphers via `-r` for servers supporting ECDSA and RSA keys at the same time like HCL Domino 12.0.x and higher with CertMgr enabled.
 
-The following tests have been performed against a Domino 12.0.2 server with a best practices cipher configuration.
 
+## Source Code
 
 You may want to look into the source code how openssl specifies and lists ciphers.
 
@@ -34,7 +34,12 @@ The main reason is that Linux provides an easy way to install OpenSSL developmen
 It has been tested with OpenSSL 1.1.1 and OpenSSL 3.0.5. 
 
 
-## Example ECDSA Cipher
+#Examples
+
+The following tests have been performed against a Domino 12.0.2 server with a best practices cipher configuration.
+
+
+## Example: ECDSA Cipher
 
 ECDSA ciphers are the more modern ciphers, based on the better performing elliptic cuve algorithms.  
 But those algorithms require ECDSA keys instead of RSA keys. 
@@ -58,7 +63,7 @@ OK: 2, Error, 44, Skipped: 14
 ```
 
 
-## Example RSA Cipher
+## Example: RSA Cipher
 
 
 ```
