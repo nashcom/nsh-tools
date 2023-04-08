@@ -1,5 +1,5 @@
 
-# nshcipher -- Small cipher check helper tool
+# nshcipher -- Cipher Check and Diagnostic Tool
 
 Diagnostic tool for TLS/SSL cipher configuration implemented using OpenSSL.  
 It can be used to dump all supported ciphers and also to connect to a remote server to check which ciphers are supported.  
