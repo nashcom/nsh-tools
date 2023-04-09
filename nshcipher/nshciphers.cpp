@@ -27,11 +27,13 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
-#include<signal.h>
+#include <signal.h>
 #include <openssl/ssl.h>
 #include <openssl/ossl_typ.h>
 
 #define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
+
+#define MAX_BUFFER_SIZE 32000
 
 int  g_ShutdownPending = 0;
 char g_HostPort[1024]  = {0};
@@ -119,7 +121,7 @@ int ListMapCiphers (char *pszFilter, int CipherListMaxLen, char *retpszCipherLis
     const char *pszName    = NULL;
 
     char *pszCipherList    = NULL;
-    char szCipherStr[8000] = {0};
+    char szCipherStr[MAX_BUFFER_SIZE] = {0};
 
     if (retpszCipherList && CipherListMaxLen)
     {
@@ -297,6 +299,7 @@ int ServerCheck (const char *pszHost,
     int i           = 0;
     int count       = 0;
     int verbose     = 0;
+    int BufferLen   = 0;
 
     SSL     *pSSL       = NULL;
     SSL_CTX *pCtx       = NULL;
@@ -305,14 +308,17 @@ int ServerCheck (const char *pszHost,
     BIO     *pBioSSL    = NULL;
     BIO     *pBioAccept = NULL;
 
-    char szBuffer[1024]    = {0};
-    char szConnect[255]    = {0};
-    char szCipherStr[8000] = {0};
-
+    char szBuffer[MAX_BUFFER_SIZE]    = {0};
+    char szCipherStr[MAX_BUFFER_SIZE] = {0};
+    char szLine[1024]                 = {0};
+    char szConnect[255]               = {0};
+ 
     STACK_OF(SSL_CIPHER) * pCiphers = NULL;
 
     const SSL_CIPHER *pCipher = NULL;
     const SSL_METHOD *pMethod = NULL;
+
+    BufferLen = sizeof (szBuffer) -1;
 
     if (NULL == pszPemCert)
     {
@@ -479,6 +485,27 @@ int ServerCheck (const char *pszHost,
             goto Cleanup;
         }
 
+        pCipher = SSL_get_current_cipher (pSSL);
+        printf ("\nConnected with cipher:\n");
+        printf_line();
+        print_cipher (pCipher, pSSL, 0);
+        printf ("\n");
+
+        if (pCipher)
+        {
+            snprintf (szBuffer,
+                      BufferLen,
+                      "\nConnected with cipher\n------------------------------------------\n%s, 0x%04X, %s, %s\n\n",
+                      SSL_get_version (pSSL),
+                      SSL_CIPHER_get_protocol_id (pCipher),
+                      SSL_CIPHER_get_name        (pCipher),
+                      SSL_CIPHER_standard_name   (pCipher));
+        }
+        else
+        {
+            snprintf (szBuffer, BufferLen, "No Cipher information available\n");
+        }
+
         /* Show ciphers requested from client */
         pCiphers = SSL_get_client_ciphers (pSSL);
 
@@ -494,32 +521,31 @@ int ServerCheck (const char *pszHost,
             printf ("\nCiphers requested by client: %d\n", CipherCount);
             printf_line ();
 
+            snprintf (szLine,
+                      sizeof (szLine),
+                      "Ciphers requested by client: %d\n------------------------------------------\n",
+                      CipherCount);
+
+            strncat (szBuffer, szLine, BufferLen);
+ 
             for (i = 0; i < CipherCount; i++)
             {
                 pCipher = sk_SSL_CIPHER_value (pCiphers, i);
-                print_cipher (pCipher, pSSL, 1);
-            }
-        }
 
-        pCipher = SSL_get_current_cipher (pSSL);
-        printf ("\nConnected with cipher:\n");
-        printf_line();
-        print_cipher (pCipher, pSSL, 0);
-        printf ("\n");
+                if (pCipher)
+                {
+                    print_cipher (pCipher, pSSL, 1);
 
-        if (pCipher)
-        {
-            snprintf (szBuffer,
-                      sizeof (szBuffer),
-                      "You are connected with: %s, 0x%04X, %s, %s\n",
-                      SSL_get_version (pSSL),
-                      SSL_CIPHER_get_protocol_id (pCipher),
-                      SSL_CIPHER_get_name        (pCipher),
-                      SSL_CIPHER_standard_name   (pCipher));
-        }
-        else
-        {
-            snprintf (szBuffer, sizeof (szBuffer), "No Cipher information available\n");
+                    snprintf (szLine,
+                              sizeof (szLine), "%04X %s\n",
+                              SSL_CIPHER_get_protocol_id (pCipher),
+                              SSL_CIPHER_standard_name   (pCipher));
+
+                    strncat (szBuffer, szLine, BufferLen);
+                }
+            } /* for */
+
+            strncat (szBuffer, "\n", BufferLen);
         }
 
         ContentLen = strlen (szBuffer);
@@ -608,8 +634,8 @@ int ConnectionCheck (const char *pszHost,
     const SSL_CIPHER *pCipher = NULL;
     const SSL_METHOD *pMethod = NULL;
 
-    char szConnect[255]    = {0};
-    char szCipherStr[8000] = {0};
+    char szConnect[255]               = {0};
+    char szCipherStr[MAX_BUFFER_SIZE] = {0};
 
     if ( (!pszHost) || (!*pszHost) )
     {
