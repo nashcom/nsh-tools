@@ -619,6 +619,8 @@ int ConnectionCheck (const char *pszHost,
 
     snprintf (szConnect, sizeof (szConnect), "%s:%s", pszHost, (pszPort && *pszPort) ? pszPort: "443");
 
+    printf ("\nConnecting to [%s] ...\n\n", szConnect);
+
     pMethod = TLS_client_method();
 
     if (NULL == pMethod)
@@ -908,12 +910,6 @@ int main(int argc, char *argv[])
 
     struct sigaction SignalAction = {0};
 
-    /* Tap signals for shutdown */
-    signal (SIGQUIT, sig_handler);
-    signal (SIGINT,  sig_handler);
-    signal (SIGTRAP, sig_handler);
-    signal (SIGABRT, sig_handler);
-
     /* Ignore broken pipes, which can happen when the remote side is not behaving well */
     SignalAction.sa_handler = SIG_IGN;
     ret = sigaction (SIGPIPE, &SignalAction, NULL);
@@ -1008,32 +1004,29 @@ int main(int argc, char *argv[])
             {
                 Options |= NSHCIPER_OPTION_ENABLE_TLS13;
             }
+
+            else if  (0 == strcmp (argv[consumed], "-s"))
+            {
+                IsServer = 1;
+            }
+
+            else if  (0 == strcmp (argv[consumed], "-c"))
+            {
+                IsServer = 0;
+            }
+
+            else if  (0 == strcmp (argv[consumed], "-r"))
+            {
+                snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "RSA+SHA256");
+            }
+
+            else if  (0 == strcmp (argv[consumed], "-e"))
+            {
+                snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "ECDSA+SHA256");
+            }
             else
             {
-                switch (*(argv[consumed]+1))
-                {
-                    case 's':
-                        IsServer = 1;
-                        break;
-
-                    case 'c':
-                        IsServer = 0;
-                        break;
-
-                    case 'r':
-                        snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "RSA+SHA256");
-                        break;
-
-                    case 'e':
-                        snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "ECDSA+SHA256");
-                        break;
-
-                    default:
-                        printf ("Invalid parameter: '%s'\n\n", argv[consumed]);
-                        goto Done;
-                        break;
-
-                } /* switch */
+                goto InvalidSyntax;
             }
         }
         else
@@ -1045,9 +1038,19 @@ int main(int argc, char *argv[])
     }
 
     if (IsServer)
+    {
+        /* Tap signals for shutdown */
+        signal (SIGQUIT, sig_handler);
+        signal (SIGINT,  sig_handler);
+        signal (SIGTRAP, sig_handler);
+        signal (SIGABRT, sig_handler);
+
         ret = ServerCheck (pszHost, pszPort, pszCert, pszKey, pszCipherList, Options);
+    }
     else
+    {
         ret = ConnectionCheck (pszHost, pszPort, pszCipherList, szSignAlgs, Options);
+    }
 
 Done:
 

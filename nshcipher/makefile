@@ -24,3 +24,10 @@ clean:
 test: all
 	bin/$(PROGRAM)
 
+install: all
+	sudo cp bin/$(PROGRAM) /usr/bin/$(PROGRAM)
+	$(MAKE) clean
+
+uninstall:
+	sudo rm -f /usr/bin/$(PROGRAM)
+	$(MAKE) clean
