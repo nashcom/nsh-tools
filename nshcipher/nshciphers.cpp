@@ -64,6 +64,8 @@ void print_cipher (const SSL_CIPHER *pCipher, const SSL *pSSL, int format)
 
 int hex2bin (const char *pszStr)
 {
+    /* Helper function to convert string to hex */
+
     int num = 0;
     char c  = 0;
     const char *p = NULL;
@@ -95,8 +97,10 @@ int hex2bin (const char *pszStr)
 }
 
 
-int ListCiphers (char *pszFilter)
+int ListMapCiphers (char *pszFilter, int CipherListMaxLen, char *retpszCipherList)
 {
+    /* List and/or map ciphers */
+
     SSL_CTX * pCtx = NULL;
     SSL *pSSL      = NULL;
 
@@ -106,12 +110,30 @@ int ListCiphers (char *pszFilter)
     int count       = 0;
     int CipherCount = 0;
     int i           = 0;
+    int len         = 0;
     int found       = 0;
     int HexID       = 0;
+    int display     = 0;
 
-    const char *pszCipherID = NULL;
+    const char *pszCipher  = NULL;
+    const char *pszName    = NULL;
 
+    char *pszCipherList    = NULL;
     char szCipherStr[8000] = {0};
+
+    if (retpszCipherList && CipherListMaxLen)
+    {
+        pszCipherList = retpszCipherList;
+    }
+    else
+    {
+        pszCipherList = szCipherStr;
+        CipherListMaxLen = sizeof (szCipherStr);
+        display = 1;
+    }
+
+    /* Ensure space for null terminator */
+    CipherListMaxLen--;
 
     pCtx = SSL_CTX_new (TLS_client_method() );
 
@@ -128,8 +150,11 @@ int ListCiphers (char *pszFilter)
     if (NULL == pCiphers)
         goto Done;
 
-    printf ("\n");
-    printf_line();
+    if (display)
+    {
+        printf ("\n");
+        printf_line();
+    }
 
     CipherCount = sk_SSL_CIPHER_num (pCiphers);
 
@@ -138,36 +163,62 @@ int ListCiphers (char *pszFilter)
         for (i = 0; i < CipherCount; i++)
         {
             pCipher = sk_SSL_CIPHER_value (pCiphers, i);
-            print_cipher (pCipher, NULL, 1);
             count++;
+
+            if (display)
+                print_cipher (pCipher, NULL, 1);
         }
     }
     else
     {
-        pszCipherID = strtok (pszFilter, ":");
+        pszCipher = strtok (pszFilter, ":");
 
-        while (pszCipherID)
+        while (pszCipher)
         {
-            HexID = hex2bin (pszCipherID);
-
             found = 0;
             for (i = 0; i < CipherCount; i++)
             {
                 pCipher = sk_SSL_CIPHER_value (pCiphers, i);
 
-                if (pCipher)
-                {
-                    if (HexID == SSL_CIPHER_get_protocol_id (pCipher))
-                    {
-                        print_cipher (pCipher, NULL, 1);
-                        if (*szCipherStr)
-                            strncat (szCipherStr, ":", sizeof (szCipherStr)-1);
+                if (NULL == pCipher)
+                    continue;
 
-                        strncat (szCipherStr, SSL_CIPHER_get_name(pCipher), sizeof (szCipherStr)-1);
+                len = strlen (pszCipher);
+                if (0 == len)
+                    continue;
+
+                if (len <= 4)
+                {
+                    HexID = hex2bin (pszCipher);
+                    if (HexID == SSL_CIPHER_get_protocol_id (pCipher))
                         found = 1;
-                        break;
-                    }
                 }
+                else
+                {
+                    if (0 == strcasecmp (pszCipher, SSL_CIPHER_get_name (pCipher)))
+                        found = 1;
+                    else if (0 == strcasecmp (pszCipher, SSL_CIPHER_standard_name (pCipher)))
+                        found = 1;
+                }
+
+                if (found)
+                {
+                    if (display)
+                        print_cipher (pCipher, NULL, 1);
+
+                    pszName = SSL_CIPHER_get_name (pCipher);
+
+                    if (NULL == strstr (pszCipherList, pszName))
+                    {
+                        if (*pszCipherList)
+                            strncat (pszCipherList, ":", CipherListMaxLen);
+
+                        strncat (pszCipherList, pszName, CipherListMaxLen);
+                    }
+
+                    break;
+                }
+
             } /* for */
 
             if (found)
@@ -176,23 +227,26 @@ int ListCiphers (char *pszFilter)
             }
             else
             {
-                printf ("Not found: %s\n", pszCipherID);
+                printf ("Not found: %s\n", pszCipher);
             }
 
-            pszCipherID = strtok (NULL, ":");
+            pszCipher = strtok (NULL, ":");
 
         } /* while */
     }
 
-    printf_line();
-    printf("Total: %d\n\n", count);
-
-    if (*szCipherStr)
+    if (display)
     {
-        printf ("\n");
-        printf ("OpenSSL Cipher String\n");
         printf_line();
-        printf ("%s\n\n", szCipherStr);
+        printf("Total: %d\n\n", count);
+
+        if (*pszCipherList)
+        {
+            printf ("\n");
+            printf ("OpenSSL Cipher String\n");
+            printf_line();
+            printf ("%s\n\n", pszCipherList);
+        }
     }
 
 Done:
@@ -233,8 +287,8 @@ int ServerCheck (const char *pszHost,
                  const char *pszPort,
                  const char *pszPemCert,
                  const char *pszPemKey,
-                 const char *pszCipherList,
-                 int        Options)
+                       char *pszCipherList,
+                       int  Options)
 {
     int ret         = 0;
     int ErrSSL      = 0;
@@ -251,8 +305,9 @@ int ServerCheck (const char *pszHost,
     BIO     *pBioSSL    = NULL;
     BIO     *pBioAccept = NULL;
 
-    char szBuffer[1024] = {0};
-    char szConnect[255] = {0};
+    char szBuffer[1024]    = {0};
+    char szConnect[255]    = {0};
+    char szCipherStr[8000] = {0};
 
     STACK_OF(SSL_CIPHER) * pCiphers = NULL;
 
@@ -324,7 +379,11 @@ int ServerCheck (const char *pszHost,
 
     if (pszCipherList && *pszCipherList)
     {
-        ret = SSL_CTX_set_cipher_list (pCtx, pszCipherList);
+        printf ("\nConfigured Ciphers:\n");
+        ListMapCiphers (pszCipherList, sizeof (szCipherStr), szCipherStr);
+        ret = SSL_CTX_set_cipher_list (pCtx, szCipherStr);
+
+        ListMapCiphers (szCipherStr, 0, NULL);
     }
 
     /* New SSL BIO setup as server */
@@ -339,17 +398,6 @@ int ServerCheck (const char *pszHost,
     }
 
     SSL_set_accept_state (pSSL);
-
-    if (pszCipherList && *pszCipherList)
-    {
-        ret = SSL_set_cipher_list (pSSL, pszCipherList);
-
-        if (1 != ret)
-        {
-            LogError ("Cannot set cipher list for server SSL context");
-            goto Done;
-        }
-    }
 
     pBioAccept = BIO_new_accept (szConnect);
 
@@ -404,17 +452,6 @@ int ServerCheck (const char *pszHost,
             goto Cleanup;
         }
 
-        if (pszCipherList && *pszCipherList)
-        {
-            ret = SSL_set_cipher_list (pSSL, pszCipherList);
-
-            if (1 != ret)
-            {
-                LogError ("Cannot set cipher list in SSL context");
-                goto Done;
-            }
-        }
-
         // dump ("Before Handshake Status", SSL_state_string_long (pSSL));
 
         ret = SSL_do_handshake (pSSL);
@@ -454,7 +491,7 @@ int ServerCheck (const char *pszHost,
         {
             CipherCount = sk_SSL_CIPHER_num (pCiphers);
 
-            printf ("\nClient ciphers: %d\n", CipherCount);
+            printf ("\nCiphers requested by client: %d\n", CipherCount);
             printf_line ();
 
             for (i = 0; i < CipherCount; i++)
@@ -550,9 +587,9 @@ Done:
 
 int ConnectionCheck (const char *pszHost,
                      const char *pszPort,
-                     const char *pszCipherList,
+                           char *pszCipherList,
                      const char *pszSignAlgs,
-                     int        Options)
+                           int  Options)
 {
     int     ret       = 0;
     SSL     *pSSL     = NULL;
@@ -571,7 +608,8 @@ int ConnectionCheck (const char *pszHost,
     const SSL_CIPHER *pCipher = NULL;
     const SSL_METHOD *pMethod = NULL;
 
-    char szConnect[255] = {0};
+    char szConnect[255]    = {0};
+    char szCipherStr[8000] = {0};
 
     if ( (!pszHost) || (!*pszHost) )
     {
@@ -631,13 +669,18 @@ int ConnectionCheck (const char *pszHost,
             ret = SSL_set1_sigalgs_list (pSSL, pszSignAlgs);
         }
 
-        ret = SSL_set_cipher_list (pSSL, pszCipherList);
-
-        if (1 != ret)
+        if (pszCipherList && *pszCipherList)
         {
-            LogError ("Cannot set cipher list in SSL context");
-            goto Done;
+            ListMapCiphers (pszCipherList, sizeof (szCipherStr), szCipherStr);
+            ret = SSL_set_cipher_list (pSSL, szCipherStr);
+
+            if (1 != ret)
+            {
+                LogError ("Cannot set cipher list in SSL context");
+                goto Done;
+            }
         }
+
 
         BIO_set_conn_hostname (pBio, szConnect);
         SSL_set_tlsext_host_name (pSSL, pszHost); /* SNI */
@@ -883,7 +926,7 @@ int main(int argc, char *argv[])
     /* Just list all known ciphers */
     if (argc < 2)
     {
-        ListCiphers (NULL);
+        ListMapCiphers (NULL, 0, NULL);
         goto Done;
     }
 
@@ -909,7 +952,7 @@ int main(int argc, char *argv[])
                 if (argv[consumed][0] == '-')
                     goto InvalidSyntax;
 
-                ListCiphers (argv[consumed]);
+                ListMapCiphers (argv[consumed], 0, NULL);
                 goto Done;
             }
 
