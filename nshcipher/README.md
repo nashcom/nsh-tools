@@ -36,6 +36,7 @@ Syntax: ./bin/nshciphers <hostname> [Options]
 -tls13   Enable TLS v1.3
 -r       Use RSA   signing algorithm (RSA+SHA256)
 -e       Use ECDSA signing algorithm (ECDSA+SHA256)
+-v       Enable verbose logging
 
 Without any parameter just list all known ciphers
 ```

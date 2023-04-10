@@ -33,6 +33,8 @@
 
 #define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
 
+#define NSHCIPHER_VERSION "1.0.0"
+
 #define MAX_BUFFER_SIZE 32000
 
 int  g_LogLevel        = 0;
@@ -867,23 +869,33 @@ Done:
 
 void help (const char *pszProgram)
 {
+    char szLine[255] = {0};
+    char *p = NULL;
+
     printf ("\n");
-    printf ("nshciphers\n");
-    printf ("----------\n");
+
+    snprintf (szLine, sizeof (szLine), "nshciphers %s", NSHCIPHER_VERSION);
+    printf ("%s\n", szLine);
+
+    p = szLine;
+    while (*p) *p++ = '-';
+    printf ("%s\n", szLine);
+
     printf ("%s\n", OpenSSL_version(OPENSSL_VERSION));
     printf ("(Build on: %s)\n\n", OPENSSL_VERSION_TEXT);
 
     printf ("Syntax: %s <hostname> [Options]\n\n", pszProgram);
-    printf ("-port    <port number>\n");
-    printf ("-cert    <PEM cert file>\n");
-    printf ("-key     <PEM key file>\n");
-    printf ("-cipher  <OpenSSL cipher list, colon separated>\n");
-    printf ("-map     <Hex string with cipher IDs to map to OpenSSL cipher names, colon separated>\n");
-    printf ("-s       Server mode\n");
-    printf ("-tls13   Enable TLS v1.3\n");
-    printf ("-r       Use RSA   signing algorithm (RSA+SHA256)\n");
-    printf ("-e       Use ECDSA signing algorithm (ECDSA+SHA256)\n");
-    printf ("-v       Enable verbose logging\n");
+    printf ("-port     <port number>\n");
+    printf ("-cert     <PEM cert file>\n");
+    printf ("-key      <PEM key file>\n");
+    printf ("-cipher   <OpenSSL cipher list, colon separated>\n");
+    printf ("-map      <Hex string with cipher IDs to map to OpenSSL cipher names, colon separated>\n");
+    printf ("-s        Server mode\n");
+    printf ("-tls13    Enable TLS v1.3\n");
+    printf ("-r        Use RSA   signing algorithm (RSA+SHA256)\n");
+    printf ("-e        Use ECDSA signing algorithm (ECDSA+SHA256)\n");
+    printf ("-v        Enable verbose logging\n");
+    printf ("--version Print version and exit\n");
     printf ("\n");
     printf ("Without any parameter just list all known ciphers\n");
 
@@ -973,12 +985,18 @@ int main(int argc, char *argv[])
                 return 0;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-v"))
+            else if (0 == strcmp (argv[consumed], "--version"))
+            {
+                printf ("%s\n", NSHCIPHER_VERSION);
+                return 0;
+            }
+
+            else if (0 == strcmp (argv[consumed], "-v"))
             {
                 g_LogLevel = 1;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-map"))
+            else if (0 == strcmp (argv[consumed], "-map"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -991,7 +1009,7 @@ int main(int argc, char *argv[])
                 goto Done;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-cipher"))
+            else if (0 == strcmp (argv[consumed], "-cipher"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1003,7 +1021,7 @@ int main(int argc, char *argv[])
                 pszCipherList = argv[consumed];
             }
 
-            else if  (0 == strcmp (argv[consumed], "-port"))
+            else if (0 == strcmp (argv[consumed], "-port"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1015,7 +1033,7 @@ int main(int argc, char *argv[])
                 pszPort = argv[consumed];
             }
 
-            else if  (0 == strcmp (argv[consumed], "-cert"))
+            else if (0 == strcmp (argv[consumed], "-cert"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1027,7 +1045,7 @@ int main(int argc, char *argv[])
                 pszCert = argv[consumed];
             }
 
-            else if  (0 == strcmp (argv[consumed], "-key"))
+            else if (0 == strcmp (argv[consumed], "-key"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1039,27 +1057,27 @@ int main(int argc, char *argv[])
                 pszKey = argv[consumed];
             }
 
-            else if  (0 == strcmp (argv[consumed], "-tls13"))
+            else if (0 == strcmp (argv[consumed], "-tls13"))
             {
                 Options |= NSHCIPER_OPTION_ENABLE_TLS13;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-s"))
+            else if (0 == strcmp (argv[consumed], "-s"))
             {
                 IsServer = 1;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-c"))
+            else if (0 == strcmp (argv[consumed], "-c"))
             {
                 IsServer = 0;
             }
 
-            else if  (0 == strcmp (argv[consumed], "-r"))
+            else if (0 == strcmp (argv[consumed], "-r"))
             {
                 snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "RSA+SHA256");
             }
 
-            else if  (0 == strcmp (argv[consumed], "-e"))
+            else if (0 == strcmp (argv[consumed], "-e"))
             {
                 snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "ECDSA+SHA256");
             }
