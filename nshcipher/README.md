@@ -20,23 +20,24 @@ The tool can also run in server mode to show requested client ciphers and the re
 - Server connections always require a PEM file with a key and certificate chain
 
 ```
-nshciphers
-----------
+nshciphers 1.0.0
+----------------
 OpenSSL 3.0.8 7 Feb 2023
 (Build on: OpenSSL 3.0.8 7 Feb 2023)
 
 Syntax: ./bin/nshciphers <hostname> [Options]
 
--port    <port number>
--cert    <PEM cert file>
--key     <PEM key file>
--cipher  <OpenSSL cipher list, colon separated>
--map     <Hex string with cipher IDs to map to OpenSSL cipher names, colon separated>
--s       Server mode
--tls13   Enable TLS v1.3
--r       Use RSA   signing algorithm (RSA+SHA256)
--e       Use ECDSA signing algorithm (ECDSA+SHA256)
--v       Enable verbose logging
+-port     <port number>
+-cert     <PEM cert file>
+-key      <PEM key file>
+-cipher   <OpenSSL cipher list, colon separated>
+-map      <Hex string with cipher IDs to map to OpenSSL cipher names, colon separated>
+-s        Server mode
+-tls13    Enable TLS v1.3
+-r        Use RSA   signing algorithm (RSA+SHA256)
+-e        Use ECDSA signing algorithm (ECDSA+SHA256)
+-v        Enable verbose logging
+--version Print version and exit
 
 Without any parameter just list all known ciphers
 ```

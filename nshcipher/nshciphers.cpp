@@ -566,6 +566,8 @@ int ServerCheck (const char *pszHost,
         ret = BIO_write (pBio, szBuffer, ContentLen);
         BIO_flush (pBio);
 
+        usleep (10*1000);
+
         /* If connection was properly established, try to cleanly shutdown */
         ret = SSL_shutdown (pSSL);
 
@@ -603,6 +605,8 @@ Cleanup:
         {
             goto Done;
         }
+
+        fflush (stdout);
 
     } /* while */
 
