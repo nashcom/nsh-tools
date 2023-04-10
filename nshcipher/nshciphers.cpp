@@ -35,6 +35,7 @@
 
 #define MAX_BUFFER_SIZE 32000
 
+int  g_LogLevel        = 0;
 int  g_ShutdownPending = 0;
 char g_HostPort[1024]  = {0};
 
@@ -297,8 +298,6 @@ int ServerCheck (const char *pszHost,
     int ContentLen  = 0;
     int CipherCount = 0;
     int i           = 0;
-    int count       = 0;
-    int verbose     = 0;
     int BufferLen   = 0;
 
     SSL     *pSSL       = NULL;
@@ -333,6 +332,8 @@ int ServerCheck (const char *pszHost,
     }
 
     snprintf (szConnect, sizeof (szConnect), "%s:%s", pszHost ? pszHost: "", (pszPort && *pszPort) ? pszPort: "443");
+
+    /* Remember connection string for shutdown request */
     snprintf (g_HostPort, sizeof (g_HostPort), "%s", szConnect);
 
     pMethod = TLS_server_method();
@@ -431,7 +432,7 @@ int ServerCheck (const char *pszHost,
 
     while (0 == g_ShutdownPending)
     {
-        if (verbose)
+        if (g_LogLevel)
             printf ("\nWaiting for connection...\n\n");
 
         ret = BIO_do_accept (pBioAccept);
@@ -458,22 +459,27 @@ int ServerCheck (const char *pszHost,
             goto Cleanup;
         }
 
-        // dump ("Before Handshake Status", SSL_state_string_long (pSSL));
+        if (g_LogLevel)
+            dump ("Before Handshake Status", SSL_state_string_long (pSSL));
 
         ret = SSL_do_handshake (pSSL);
 
-        // dump ("Handshake status", SSL_state_string_long (pSSL));
-
-        if (g_ShutdownPending)
+        if (g_LogLevel)
         {
-            goto Done;
+            dump ("Handshake status", SSL_state_string_long (pSSL));
+
+            /* Check SSL handshake status. Returns 1 if SSL session was not established */
+            if (SSL_in_init (pSSL))
+                printf ("SSL_in_init: %d\n", SSL_in_init (pSSL));
         }
 
         if (1 != ret)
         {
-            if (verbose)
+            if (g_LogLevel)
                 LogError ("SSL handshake failure");
 
+            /* Can't call SSL_shutdown, but ensure we are getting rid of the connection ASAP */
+            SSL_set_quiet_shutdown (pSSL, 1);
             goto Cleanup;
         }
 
@@ -482,6 +488,9 @@ int ServerCheck (const char *pszHost,
         if (SSL_ERROR_NONE != ErrSSL)
         {
             LogError ("Error returned from SSL Handshake");
+
+            /* Can't call SSL_shutdown, but ensure we are getting rid of the connection ASAP */
+            SSL_set_quiet_shutdown (pSSL, 1);
             goto Cleanup;
         }
 
@@ -511,7 +520,7 @@ int ServerCheck (const char *pszHost,
 
         if (NULL == pCiphers)
         {
-            if (verbose)
+            if (g_LogLevel)
                 printf ("No client ciphers returned\n");
         }
         else
@@ -555,7 +564,7 @@ int ServerCheck (const char *pszHost,
         ret = BIO_write (pBio, szBuffer, ContentLen);
         BIO_flush (pBio);
 
-        /* If connection was properly established, try to cleanly shutdown the connection and wait up to one second */
+        /* If connection was properly established, try to cleanly shutdown */
         ret = SSL_shutdown (pSSL);
 
         if (ret < 0)
@@ -564,29 +573,33 @@ int ServerCheck (const char *pszHost,
         }
         else
         {
-            /* Wait up to one second for shutdown and check every 100 ms */
-            count = 0;
-            while (0 == ret)
-            {
-                usleep (100*1000);
-                ret = SSL_shutdown (pSSL);
-                count++;
+            /* Needs to be called twice */
+            ret = SSL_shutdown (pSSL);
 
-                if (count >= 10)
-                    break;
-            }
-
-            if (verbose)
-                printf ("Shutdown(%d): %d\n", count, ret);
+            if (g_LogLevel)
+                printf ("Shutdown SSL: %d\n", ret);
         }
 
 Cleanup:
 
+        if (pSSL)
+        {
+            ret = SSL_clear (pSSL);
+            if (1 != ret)
+                LogError ("Cannot clear SSL");
+        }
+
         if (pBio)
         {
-            BIO_reset (pBio);
+            BIO_set_close (pBio, BIO_CLOSE);
+            usleep (1*1000);
             BIO_free_all (pBio);
             pBio = NULL;
+        }
+
+        if (g_ShutdownPending)
+        {
+            goto Done;
         }
 
     } /* while */
@@ -715,8 +728,6 @@ int ConnectionCheck (const char *pszHost,
 
         ret = SSL_do_handshake (pSSL);
 
-        // usleep (1000);
-
         if (1 == ret)
         {
             pCipher = SSL_get_current_cipher (pSSL);
@@ -819,8 +830,6 @@ int ConnectionCheck (const char *pszHost,
             CountError++;
         }
 
-        // usleep (1000);
-
         if (pBio)
         {
             BIO_free_all (pBio);
@@ -874,6 +883,7 @@ void help (const char *pszProgram)
     printf ("-tls13   Enable TLS v1.3\n");
     printf ("-r       Use RSA   signing algorithm (RSA+SHA256)\n");
     printf ("-e       Use ECDSA signing algorithm (ECDSA+SHA256)\n");
+    printf ("-v       Enable verbose logging\n");
     printf ("\n");
     printf ("Without any parameter just list all known ciphers\n");
 
@@ -926,9 +936,7 @@ int main(int argc, char *argv[])
     int  Options  = 0;
 
     char szSignAlgs[20] = {0};
-    char szLocalhost[]  = "localhost";
-
-    char *pszHost       = szLocalhost;
+    char *pszHost       = NULL;
     char *pszPort       = NULL;
     char *pszCipherList = NULL;
     char *pszCert       = NULL;
@@ -963,6 +971,11 @@ int main(int argc, char *argv[])
             {
                 help (argv[0]);
                 return 0;
+            }
+
+            else if  (0 == strcmp (argv[consumed], "-v"))
+            {
+                g_LogLevel = 1;
             }
 
             else if  (0 == strcmp (argv[consumed], "-map"))
