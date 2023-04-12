@@ -30,10 +30,13 @@
 #include <signal.h>
 #include <openssl/ssl.h>
 #include <openssl/ossl_typ.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+
 
 #define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
 
-#define NSHCIPHER_VERSION "1.0.0"
+#define NSHCIPHER_VERSION "1.0.1"
 
 #define MAX_BUFFER_SIZE 32000
 
@@ -101,6 +104,16 @@ int hex2bin (const char *pszStr)
     return num;
 }
 
+int IsNullStr (const char *pszStr)
+{
+    if (NULL == pszStr)
+        return 1;
+
+    if ('\0' == *pszStr)
+        return 1;
+
+    return 0;
+}
 
 int ListMapCiphers (char *pszFilter, int CipherListMaxLen, char *retpszCipherList)
 {
@@ -287,11 +300,335 @@ int WriteHttpHeader (BIO *pBio, int HttpStatus, char *pszHeader, int ContentLen)
     return ret;
 }
 
+int Create_RSA_Key (int wBits, EVP_PKEY **ppKey)
+{
+    int      ret  = 0;
+    EVP_PKEY_CTX *pEvpKeyCtx = NULL;
+
+    if (NULL == ppKey)
+        goto Done;
+
+    *ppKey = NULL;
+
+    pEvpKeyCtx = EVP_PKEY_CTX_new_id (EVP_PKEY_RSA, NULL);
+
+    if (NULL == pEvpKeyCtx)
+    {
+        LogError ("Cannot use EVP_PKEY_RSA");
+    }
+
+    ret = EVP_PKEY_keygen_init (pEvpKeyCtx);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot init keygen");
+        goto Done;
+    }
+
+    ret = EVP_PKEY_CTX_set_rsa_keygen_bits (pEvpKeyCtx, wBits);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set key len");
+        goto Done;
+    }
+
+    ret = EVP_PKEY_keygen (pEvpKeyCtx, ppKey);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot create key");
+        goto Done;
+    }
+
+Done:
+
+    if (pEvpKeyCtx)
+    {
+        EVP_PKEY_CTX_free (pEvpKeyCtx);
+        pEvpKeyCtx = NULL;
+    }
+
+    return ret;
+}
+
+
+int GenerateSerialNumber (ASN1_INTEGER *pAsnInteger)
+{
+    #define NSH_SERIAL_RAND_BITS 127
+    BIGNUM *pTempBigNum = NULL;
+    int ret = 0;
+
+    if (NULL == pAsnInteger)
+        return 0;
+
+    ASN1_INTEGER_set (pAsnInteger, 0);
+
+    pTempBigNum = BN_new();
+
+    if (NULL == pTempBigNum)
+        goto Done;
+
+    ret = BN_rand (pTempBigNum, NSH_SERIAL_RAND_BITS, BN_RAND_TOP_ANY, BN_RAND_BOTTOM_ANY);
+
+    if (1 != ret)
+        goto Done;
+
+    if (!BN_to_ASN1_INTEGER (pTempBigNum, pAsnInteger))
+        ret = 0;
+
+Done:
+
+    if (pTempBigNum)
+    {
+        BN_free(pTempBigNum);
+        pTempBigNum = NULL;
+    }
+
+    return ret;
+}
+
+int X509AddNameEntryText (X509_NAME *pX509Name, const char *pszName, const char *pszValue)
+{
+    int ret = 0;
+
+    if ((NULL == pszName) || ('\0' == *pszName))
+    {
+        return 0;
+    }
+
+    if ((NULL == pszValue) || ('\0' == *pszValue))
+    {
+        return 0;
+    }
+
+    ret = X509_NAME_add_entry_by_txt (pX509Name, pszName, MBSTRING_ASC, (const unsigned char*) pszValue, -1, -1, 0);
+
+    if (1 != ret)
+    {
+        LogError ("X509 - Cannot add extension");
+    }
+
+    return ret;
+}
+
+int add_ext (X509 *pCert, int nid, char *value,  X509V3_CTX *pV3Ctx)
+{
+    X509_EXTENSION *pExt = NULL;
+    int ret = 0;
+
+    if (IsNullStr(value))
+    {
+        return 0;
+    }
+
+    pExt = X509V3_EXT_conf_nid (NULL, pV3Ctx, nid, value);
+
+    if (NULL == pExt)
+    {
+        LogError ("Cannot create extension");
+        printf ("Error adding extension: [%s]", value);
+        goto Done;
+    }
+
+    ret = X509_add_ext (pCert, pExt, -1);
+
+    if (1 != ret)
+    {
+        LogError  ("Cannot add extension");
+    }
+
+Done:
+
+    if (pExt)
+    {
+        X509_EXTENSION_free (pExt);
+        pExt = NULL;
+    }
+
+    return ret;
+}
+
+
+int CreateCertificate (EVP_PKEY *pKey,
+                       char *pszOrganization,
+                       char *pszCommonName,
+                       char *pszSAN,
+                       int ExpirationDays,
+                       X509 **ppCert)
+{
+    int ret = 0;
+    X509_NAME    *pX509Name     = NULL;
+    ASN1_INTEGER *pSerialAsnInt = NULL;
+    ASN1_TIME    *pTime         = NULL;
+    time_t       CurrentTime    = time (NULL);
+    EVP_PKEY     *pPubKey       = NULL;
+    X509         *pCert         = NULL;
+
+    const EVP_MD *pEvpMD  = EVP_sha256();
+
+    /* Create a new certificate */
+
+    *ppCert = X509_new();
+
+    /* Short could for access to certificate */
+    pCert = *ppCert;
+
+    if (NULL == pCert)
+    {
+        LogError ("Cannot allocate certificate");
+        goto Done;
+    }
+
+    ret = X509_set_version (pCert, 2);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set certificate version");
+        goto Done;
+    }
+
+    pSerialAsnInt = ASN1_INTEGER_new();
+
+    if (NULL == pSerialAsnInt)
+    {
+        LogError ("Cannot allocate serial number");
+        goto Done;
+    }
+
+    GenerateSerialNumber (pSerialAsnInt);
+
+    ret = X509_set_serialNumber (pCert, pSerialAsnInt);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set serial number");
+        goto Done;
+    }
+
+    ret = X509_set_pubkey (pCert, pKey);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set public key in certificate");
+        goto Done;
+    }
+
+    pX509Name = X509_NAME_new();
+
+    if (NULL == pX509Name)
+    {
+        LogError ("Cannot allocate x509 name");
+        goto Done;
+    }
+
+    if (!IsNullStr (pszOrganization))
+        X509AddNameEntryText (pX509Name, "O", pszOrganization);
+
+    if (!IsNullStr (pszCommonName))
+       X509AddNameEntryText (pX509Name, "CN", pszCommonName);
+
+
+    ret = X509_set_issuer_name (pCert, pX509Name);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot add Issuer Name to certificate");
+        goto Done;
+    }
+
+    ret = X509_set_subject_name (pCert, pX509Name);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set subject name for certificate");
+        goto Done;
+    }
+
+    pTime = ASN1_TIME_adj (pTime, CurrentTime, -1, 0);
+
+    if (NULL == pTime)
+    {
+        LogError ("Cannot calculate NotBefore time");
+        goto Done;
+    }
+
+    ret = X509_set1_notBefore (pCert, pTime);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set NotBefore for certificate");
+        goto Done;
+    }
+
+    pTime = ASN1_TIME_adj (pTime, CurrentTime, ExpirationDays, 0);
+
+    if (NULL == pTime)
+    {
+        LogError ("Cannot calculate NotAfter time");
+        goto Done;
+    }
+
+    ret = X509_set1_notAfter (pCert, pTime);
+
+    if (1 != ret)
+    {
+        LogError ("Cannot set NotAfter for certificate");
+        goto Done;
+    }
+
+    /* Set SAN explicitly if specified */
+
+    if (!IsNullStr (pszSAN))
+        ret = add_ext (pCert, NID_subject_alt_name, pszSAN, NULL);
+
+    ret = add_ext (pCert, NID_ext_key_usage, "clientAuth,serverAuth", NULL);
+    ret = add_ext (pCert, NID_key_usage, "critical,digitalSignature,keyEncipherment", NULL);
+
+    /* Set extensions context for Subject Key Identifier and Authority Key Identifier */
+
+    ret = X509_sign (pCert, pKey, pEvpMD);
+
+    if (ret < 1)
+    {
+        LogError ("Cannot sign certificate");
+        goto Done;
+    }
+
+Done:
+
+    if (pPubKey)
+    {
+        EVP_PKEY_free (pPubKey);
+        pPubKey = NULL;
+    }
+
+    if (pTime)
+    {
+        ASN1_STRING_free (pTime);
+        pTime = NULL;
+    }
+
+    if (pSerialAsnInt)
+    {
+        ASN1_INTEGER_free (pSerialAsnInt);
+        pSerialAsnInt = NULL;
+    }
+
+    if (pX509Name)
+    {
+        X509_NAME_free (pX509Name);
+        pX509Name = NULL;
+    }
+
+    return ret;
+}
 
 int ServerCheck (const char *pszHost,
                  const char *pszPort,
                  const char *pszPemCert,
                  const char *pszPemKey,
+                 const char *pszSAN,
                        char *pszCipherList,
                        int  Options)
 {
@@ -302,36 +639,27 @@ int ServerCheck (const char *pszHost,
     int i           = 0;
     int BufferLen   = 0;
 
-    SSL     *pSSL       = NULL;
-    SSL_CTX *pCtx       = NULL;
-    BIO     *pBio       = NULL;
-    BIO     *bbio       = NULL;
-    BIO     *pBioSSL    = NULL;
-    BIO     *pBioAccept = NULL;
+    SSL      *pSSL       = NULL;
+    SSL_CTX  *pCtx       = NULL;
+    BIO      *pBio       = NULL;
+    BIO      *bbio       = NULL;
+    BIO      *pBioSSL    = NULL;
+    BIO      *pBioAccept = NULL;
+    EVP_PKEY *pKey       = NULL;
+    X509     *pCert      = NULL;
 
     char szBuffer[MAX_BUFFER_SIZE]    = {0};
     char szCipherStr[MAX_BUFFER_SIZE] = {0};
     char szLine[1024]                 = {0};
     char szConnect[255]               = {0};
- 
+    char szSAN[255]                   = {0};
+
     STACK_OF(SSL_CIPHER) * pCiphers = NULL;
 
     const SSL_CIPHER *pCipher = NULL;
     const SSL_METHOD *pMethod = NULL;
 
     BufferLen = sizeof (szBuffer) -1;
-
-    if (NULL == pszPemCert)
-    {
-        LogError ("No PEM server certificate specified");
-        goto Done;
-    }
-
-    if (NULL == pszPemKey)
-    {
-        LogError ("No PEM server key specified");
-        goto Done;
-    }
 
     snprintf (szConnect, sizeof (szConnect), "%s:%s", pszHost ? pszHost: "", (pszPort && *pszPort) ? pszPort: "443");
 
@@ -363,19 +691,84 @@ int ServerCheck (const char *pszHost,
         SSL_CTX_set_options (pCtx, SSL_OP_NO_TLSv1_3);
     }
 
-    ret = SSL_CTX_use_certificate_chain_file (pCtx, pszPemCert);
-    if (1 != ret)
+    if ( pszPemKey && *pszPemKey )
     {
-        LogError ("Cannot read certificate");
-        goto Done;
+        ret = SSL_CTX_use_PrivateKey_file (pCtx, pszPemKey, SSL_FILETYPE_PEM);
+
+        if (1 != ret)
+        {
+            LogError ("Cannot read private key");
+            goto Done;
+        }
+    }
+    else
+    {
+        /* No private key specified, create one on the fly */
+
+        ret = Create_RSA_Key (4096, &pKey);
+
+        if ( (NULL == pKey) || (ret != 1) )
+        {
+           LogError ("No private key created");
+           goto Done;
+        }
+        else
+        {
+            ret = SSL_CTX_use_PrivateKey (pCtx, pKey);
+
+            if (1 != ret)
+            {
+                LogError ("Cannot read private key");
+                goto Done;
+            }
+        }
     }
 
-    ret = SSL_CTX_use_PrivateKey_file (pCtx, pszPemKey, SSL_FILETYPE_PEM);
-
-    if (1 != ret)
+    if ( pszPemCert && *pszPemCert )
     {
-        LogError ("Cannot read private key");
-        goto Done;
+        ret = SSL_CTX_use_certificate_chain_file (pCtx, pszPemCert);
+        if (1 != ret)
+        {
+            LogError ("Cannot read certificate");
+            goto Done;
+        }
+    }
+    else
+    {
+        if (NULL == pKey)
+        {
+            LogError ("No private key found to create certificate");
+            goto Done;
+        }
+
+        snprintf (szSAN, sizeof (szSAN), "DNS:%s", IsNullStr (pszSAN) ? "localhost" : pszSAN);
+
+        ret = CreateCertificate (pKey,
+                     "NashCom",
+                     "nshciphers",
+                     szSAN,
+                     365,
+                     &pCert);
+
+        if (ret < 1)
+        {
+            LogError ("Cannot create certificate");
+            goto Done;
+        }
+
+        if (NULL == pCert)
+        {
+            LogError ("No on-the-fly certificate created");
+            goto Done;
+        }
+
+        ret = SSL_CTX_use_certificate (pCtx, pCert);
+
+        if (1 != ret)
+        {
+            LogError ("Cannot use on-the-fly certificate");
+            goto Done;
+        }
     }
 
     ret = SSL_CTX_check_private_key (pCtx);
@@ -538,7 +931,7 @@ int ServerCheck (const char *pszHost,
                       CipherCount);
 
             strncat (szBuffer, szLine, BufferLen);
- 
+
             for (i = 0; i < CipherCount; i++)
             {
                 pCipher = sk_SSL_CIPHER_value (pCiphers, i);
@@ -611,6 +1004,18 @@ Cleanup:
     } /* while */
 
 Done:
+
+    if (pKey)
+    {
+        EVP_PKEY_free (pKey);
+        pKey = NULL;
+    }
+
+    if (pCert)
+    {
+        X509_free (pCert);
+        pCert = NULL;
+    }
 
     if (pBioAccept)
     {
@@ -889,12 +1294,13 @@ void help (const char *pszProgram)
     printf ("(Build on: %s)\n\n", OPENSSL_VERSION_TEXT);
 
     printf ("Syntax: %s <hostname> [Options]\n\n", pszProgram);
-    printf ("-port     <port number>\n");
+    printf ("-port     <port number to listen/connect to>\n");
     printf ("-cert     <PEM cert file>\n");
     printf ("-key      <PEM key file>\n");
     printf ("-cipher   <OpenSSL cipher list, colon separated>\n");
+    printf ("-san      <SAN name when creating self signed cert>\n");
     printf ("-map      <Hex string with cipher IDs to map to OpenSSL cipher names, colon separated>\n");
-    printf ("-s        Server mode\n");
+    printf ("-s        Run in server mode\n");
     printf ("-tls13    Enable TLS v1.3\n");
     printf ("-r        Use RSA   signing algorithm (RSA+SHA256)\n");
     printf ("-e        Use ECDSA signing algorithm (ECDSA+SHA256)\n");
@@ -957,6 +1363,7 @@ int main(int argc, char *argv[])
     char *pszCipherList = NULL;
     char *pszCert       = NULL;
     char *pszKey        = NULL;
+    char *pszSAN        = NULL;
 
     struct sigaction SignalAction = {0};
 
@@ -1061,6 +1468,18 @@ int main(int argc, char *argv[])
                 pszKey = argv[consumed];
             }
 
+            else if (0 == strcmp (argv[consumed], "-san"))
+            {
+                consumed++;
+                if (consumed >= argc)
+                    goto InvalidSyntax;
+
+                if (argv[consumed][0] == '-')
+                    goto InvalidSyntax;
+
+                pszSAN = argv[consumed];
+            }
+
             else if (0 == strcmp (argv[consumed], "-tls13"))
             {
                 Options |= NSHCIPER_OPTION_ENABLE_TLS13;
@@ -1106,7 +1525,7 @@ int main(int argc, char *argv[])
         signal (SIGTRAP, sig_handler);
         signal (SIGABRT, sig_handler);
 
-        ret = ServerCheck (pszHost, pszPort, pszCert, pszKey, pszCipherList, Options);
+        ret = ServerCheck (pszHost, pszPort, pszCert, pszKey, pszSAN, pszCipherList, Options);
     }
     else
     {
