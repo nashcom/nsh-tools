@@ -5,7 +5,7 @@
 
 
 CC=g++
-CFLAGS= -g -Wall -c -m64 -fPIC -fpermissive -Wno-write-strings
+CFLAGS= -g -Wall -c -fPIC -fpermissive -Wno-write-strings
 LIBS= -lcrypto -lssl
 
 PROGRAM=nshciphers

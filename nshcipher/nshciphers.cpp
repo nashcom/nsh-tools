@@ -26,13 +26,23 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <unistd.h>
-#include <signal.h>
-#include <openssl/ssl.h>
-#include <openssl/ossl_typ.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include <openssl/ssl.h>
+#include <openssl/ossl_typ.h>
 
+#ifdef _WIN32
+
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+
+#else
+
+#include <signal.h>
+
+#include <unistd.h>
+
+#endif
 
 #define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
 
@@ -959,7 +969,10 @@ int ServerCheck (const char *pszHost,
         ret = BIO_write (pBio, szBuffer, ContentLen);
         BIO_flush (pBio);
 
+#ifdef _WIN32
+#else
         usleep (10*1000);
+#endif
 
         /* If connection was properly established, try to cleanly shutdown */
         ret = SSL_shutdown (pSSL);
@@ -989,7 +1002,11 @@ Cleanup:
         if (pBio)
         {
             BIO_set_close (pBio, BIO_CLOSE);
+
+#ifdef _WIN32
+#else
             usleep (1*1000);
+#endif
             BIO_free_all (pBio);
             pBio = NULL;
         }
@@ -1313,6 +1330,9 @@ void help (const char *pszProgram)
 }
 
 
+#ifdef _WIN32
+#else
+
 void sig_handler (int signum)
 {
     int ret   = 0;
@@ -1349,6 +1369,8 @@ Done:
     return;
 }
 
+#endif
+
 
 int main(int argc, char *argv[])
 {
@@ -1365,6 +1387,8 @@ int main(int argc, char *argv[])
     char *pszKey        = NULL;
     char *pszSAN        = NULL;
 
+#ifdef _WIN32
+#else
     struct sigaction SignalAction = {0};
 
     /* Ignore broken pipes, which can happen when the remote side is not behaving well */
@@ -1375,6 +1399,8 @@ int main(int argc, char *argv[])
     {
         LogError ("Cannot set signal action to ignore SIGPIPE");
     }
+
+#endif
 
     /* Just list all known ciphers */
     if (argc < 2)
@@ -1519,11 +1545,15 @@ int main(int argc, char *argv[])
 
     if (IsServer)
     {
+
+#ifdef _WIN32
+#else
         /* Tap signals for shutdown */
         signal (SIGQUIT, sig_handler);
         signal (SIGINT,  sig_handler);
         signal (SIGTRAP, sig_handler);
         signal (SIGABRT, sig_handler);
+#endif
 
         ret = ServerCheck (pszHost, pszPort, pszCert, pszKey, pszSAN, pszCipherList, Options);
     }
