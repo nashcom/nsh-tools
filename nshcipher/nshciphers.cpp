@@ -23,15 +23,8 @@
 
 */
 
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-#include <openssl/ssl.h>
-#include <openssl/ossl_typ.h>
-
 #ifdef _WIN32
+#include <windows.h>
 
 #define strncasecmp _strnicmp
 #define strcasecmp _stricmp
@@ -39,10 +32,17 @@
 #else
 
 #include <signal.h>
-
 #include <unistd.h>
 
 #endif
+
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+#include <openssl/ssl.h>
+#include <openssl/ossl_typ.h>
 
 #define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
 
@@ -1330,15 +1330,12 @@ void help (const char *pszProgram)
 }
 
 
-#ifdef _WIN32
-#else
-
-void sig_handler (int signum)
+void SignalShutdown ()
 {
     int ret   = 0;
     BIO *pBio = NULL;
 
-    // printf ("\nSignal catched: %d\n", signum);
+    printf ("Shutdown detected\n");
 
     g_ShutdownPending = 1;
 
@@ -1366,6 +1363,44 @@ Done:
         pBio = NULL;
     }
 
+    return;
+}
+
+
+#ifdef _WIN32
+
+BOOL WINAPI CtrlHandler (DWORD fdwCtrlType)
+{
+    BOOL bTerminate = FALSE;
+
+    switch (fdwCtrlType)
+    {
+        case CTRL_C_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_LOGOFF_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            bTerminate = TRUE;
+            break;
+
+    default:
+        bTerminate = FALSE;
+    }
+
+    if (bTerminate)
+    {
+        SignalShutdown();
+    }
+
+    return bTerminate;
+}
+
+#else
+
+void sig_handler (int signum)
+{
+
+    SignalShutdown();
     return;
 }
 
@@ -1547,6 +1582,10 @@ int main(int argc, char *argv[])
     {
 
 #ifdef _WIN32
+    if (FALSE == SetConsoleCtrlHandler (CtrlHandler, TRUE))
+    {
+        LogError ("Cannot register CtrlHandler");
+    }
 #else
         /* Tap signals for shutdown */
         signal (SIGQUIT, sig_handler);
