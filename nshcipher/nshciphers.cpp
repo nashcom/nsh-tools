@@ -970,6 +970,7 @@ int ServerCheck (const char *pszHost,
         BIO_flush (pBio);
 
 #ifdef _WIN32
+        Sleep (1);
 #else
         usleep (10*1000);
 #endif
@@ -1004,6 +1005,7 @@ Cleanup:
             BIO_set_close (pBio, BIO_CLOSE);
 
 #ifdef _WIN32
+            Sleep (1);
 #else
             usleep (1*1000);
 #endif
