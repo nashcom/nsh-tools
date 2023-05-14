@@ -44,9 +44,9 @@
 #include <openssl/ssl.h>
 #include <openssl/ossl_typ.h>
 
-#define NSHCIPER_OPTION_ENABLE_TLS13 0x0001
+#define NSHCIPHER_OPTION_ENABLE_TLS13 0x0001
 
-#define NSHCIPHER_VERSION "1.0.1"
+#define NSHCIPHERS_VERSION "1.0.1"
 
 #define MAX_BUFFER_SIZE 32000
 
@@ -692,7 +692,7 @@ int ServerCheck (const char *pszHost,
         goto Done;
     }
 
-    if (Options & NSHCIPER_OPTION_ENABLE_TLS13)
+    if (Options & NSHCIPHER_OPTION_ENABLE_TLS13)
     {
         /* Keep TLS V1.3 enabled */
     }
@@ -1106,7 +1106,7 @@ int ConnectionCheck (const char *pszHost,
         goto Done;
     }
 
-    if (Options & NSHCIPER_OPTION_ENABLE_TLS13)
+    if (Options & NSHCIPHER_OPTION_ENABLE_TLS13)
     {
         /* Keep TLS V1.3 enabled */
     }
@@ -1302,7 +1302,7 @@ void help (const char *pszProgram)
 
     printf ("\n");
 
-    snprintf (szLine, sizeof (szLine), "nshciphers %s", NSHCIPHER_VERSION);
+    snprintf (szLine, sizeof (szLine), "nshciphers %s", NSHCIPHERS_VERSION);
     printf ("%s\n", szLine);
 
     p = szLine;
@@ -1461,7 +1461,7 @@ int main(int argc, char *argv[])
 
             else if (0 == strcmp (argv[consumed], "--version"))
             {
-                printf ("%s\n", NSHCIPHER_VERSION);
+                printf ("%s\n", NSHCIPHERS_VERSION);
                 return 0;
             }
 
@@ -1545,7 +1545,7 @@ int main(int argc, char *argv[])
 
             else if (0 == strcmp (argv[consumed], "-tls13"))
             {
-                Options |= NSHCIPER_OPTION_ENABLE_TLS13;
+                Options |= NSHCIPHER_OPTION_ENABLE_TLS13;
             }
 
             else if (0 == strcmp (argv[consumed], "-s"))

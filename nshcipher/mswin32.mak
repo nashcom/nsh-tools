@@ -14,8 +14,8 @@ nshciphers.exe: nshciphers.obj
 
 # Compile command
 
-nshcipher.obj: nshcipher.cpp
-	cl -c /Zp /DWINVER=0x0602 nshcipher.cpp /Fo"$@"
+nshciphers.obj: nshciphers.cpp
+	cl -c /Zp /DWINVER=0x0602 nshciphers.cpp /Fo"$@"
 
 clean:
 	del *.obj *.pdb *.exe *.ilk *.sym *.map *.res
