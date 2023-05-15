@@ -1450,27 +1450,27 @@ int main(int argc, char *argv[])
     {
         if ('-' == *argv[consumed])
         {
-            if ( (0 == stricmp (argv[consumed], "-h"))    ||
-                 (0 == stricmp (argv[consumed], "-?"))    ||
-                 (0 == stricmp (argv[consumed], "-help")) ||
-                 (0 == stricmp (argv[consumed], "--help")) )
+            if ( (0 == strcasecmp (argv[consumed], "-h"))    ||
+                 (0 == strcasecmp (argv[consumed], "-?"))    ||
+                 (0 == strcasecmp (argv[consumed], "-help")) ||
+                 (0 == strcasecmp (argv[consumed], "--help")) )
             {
                 help (argv[0]);
                 return 0;
             }
 
-            else if (0 == stricmp (argv[consumed], "--version"))
+            else if (0 == strcasecmp (argv[consumed], "--version"))
             {
                 printf ("%s\n", NSHCIPHERS_VERSION);
                 return 0;
             }
 
-            else if (0 == stricmp (argv[consumed], "-v"))
+            else if (0 == strcasecmp (argv[consumed], "-v"))
             {
                 g_LogLevel = 1;
             }
 
-            else if (0 == stricmp (argv[consumed], "-map"))
+            else if (0 == strcasecmp (argv[consumed], "-map"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1483,7 +1483,7 @@ int main(int argc, char *argv[])
                 goto Done;
             }
 
-            else if (0 == stricmp (argv[consumed], "-cipher"))
+            else if (0 == strcasecmp (argv[consumed], "-cipher"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1495,7 +1495,7 @@ int main(int argc, char *argv[])
                 pszCipherList = argv[consumed];
             }
 
-            else if (0 == stricmp (argv[consumed], "-port"))
+            else if (0 == strcasecmp (argv[consumed], "-port"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1507,7 +1507,7 @@ int main(int argc, char *argv[])
                 pszPort = argv[consumed];
             }
 
-            else if (0 == stricmp (argv[consumed], "-cert"))
+            else if (0 == strcasecmp (argv[consumed], "-cert"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1519,7 +1519,7 @@ int main(int argc, char *argv[])
                 pszCert = argv[consumed];
             }
 
-            else if (0 == stricmp (argv[consumed], "-key"))
+            else if (0 == strcasecmp (argv[consumed], "-key"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1531,7 +1531,7 @@ int main(int argc, char *argv[])
                 pszKey = argv[consumed];
             }
 
-            else if (0 == stricmp (argv[consumed], "-san"))
+            else if (0 == strcasecmp (argv[consumed], "-san"))
             {
                 consumed++;
                 if (consumed >= argc)
@@ -1543,27 +1543,27 @@ int main(int argc, char *argv[])
                 pszSAN = argv[consumed];
             }
 
-            else if (0 == stricmp (argv[consumed], "-tls13"))
+            else if (0 == strcasecmp (argv[consumed], "-tls13"))
             {
                 Options |= NSHCIPHER_OPTION_ENABLE_TLS13;
             }
 
-            else if (0 == stricmp (argv[consumed], "-s"))
+            else if (0 == strcasecmp (argv[consumed], "-s"))
             {
                 IsServer = 1;
             }
 
-            else if (0 == stricmp (argv[consumed], "-c"))
+            else if (0 == strcasecmp (argv[consumed], "-c"))
             {
                 IsServer = 0;
             }
 
-            else if (0 == stricmp (argv[consumed], "-r"))
+            else if (0 == strcasecmp (argv[consumed], "-r"))
             {
                 snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "RSA+SHA256");
             }
 
-            else if (0 == stricmp (argv[consumed], "-e"))
+            else if (0 == strcasecmp (argv[consumed], "-e"))
             {
                 snprintf (szSignAlgs, sizeof (szSignAlgs), "%s", "ECDSA+SHA256");
             }
