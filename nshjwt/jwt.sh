@@ -71,7 +71,7 @@ generate_oidc_payload()
   local SCOPE=Domino.user.all
   local SUBJECT=abcd
   local EMAIL=john.doe@acme.com
-  local NOW=$EPOCHSECONDS
+  local NOW=$(date +'%s')
   local EXP=$(expr $NOW + 7200)
 
   PAYLOAD="{\"iss\":\"$ISSUER\",\"aud\":\"$AUDIENCE\",\"iat\":$NOW,\"nbf\":$NOW,\"auth_time\":$NOW,\"exp\":$EXP,\"scope\":\"$SCOPE\",\"sub\":\"$SUBJECT\",\"email\":\"$EMAIL\"}"
