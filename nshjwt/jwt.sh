@@ -149,6 +149,7 @@ decode_jwt()
   local PAYLOAD_OUT=
   local PAD_COUNT=
   local TEMP_SIG_FILE=$(mktemp).sig
+  local JWT_FILE=
 
   if [ -z "$1" ]; then
 
@@ -159,19 +160,19 @@ decode_jwt()
 
   else
 
-    PAYLOAD_FILE="$1"
+    JWT_FILE="$1"
 
-    if [ ! -e "$PAYLOAD_FILE" ]; then
-      echo "Payload file not found [$PAYLOAD_FILE]"
+    if [ ! -e "$JWT_FILE" ]; then
+      echo "Payload file not found [$JWT_FILE]"
       exit 1
     fi
 
-    echo "Decoding file [$PAYLOAD_FILE]"
+    echo "Decoding file [$JWT_FILE]"
 
     # Split header.payload.signature
-    HEADER_BASE64URL=$(cat "$PAYLOAD_FILE" | cut -d"." -f1)
-    PAYLOAD_BASE64URL=$(cat "$PAYLOAD_FILE" | cut -d"." -f2)
-    SIG_BASE64URL=$(cat "$PAYLOAD_FILE" | cut -d"." -f3)
+    HEADER_BASE64URL=$(cat "$JWT_FILE" | cut -d"." -f1)
+    PAYLOAD_BASE64URL=$(cat "$JWT_FILE" | cut -d"." -f2)
+    SIG_BASE64URL=$(cat "$JWT_FILE" | cut -d"." -f3)
   fi
 
   # Decode base64 signature into binary file
