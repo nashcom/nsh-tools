@@ -182,7 +182,7 @@ decode_jwt()
     while ((PAD_COUNT--)); do SIG_BASE64=$SIG_BASE64=; done
   fi
 
-  echo $SIG_BASE64 | openssl base64 -d -out "$TEMP_SIG_FILE"
+  echo $SIG_BASE64 | openssl base64 -d -A -out "$TEMP_SIG_FILE"
 
   if [ ! -e "$TEMP_SIG_FILE" ]; then
     echo "Cannot read signature file [$TEMP_SIG_FILE]"
@@ -213,7 +213,7 @@ decode_jwt()
     while ((PAD_COUNT--)); do HEADER_BASE64=$HEADER_BASE64=; done
   fi
 
-  HEADER_OUT=$(echo $HEADER_BASE64 | openssl base64 -d)
+  HEADER_OUT=$(echo $HEADER_BASE64 | openssl base64 -d -A)
   dump "Header" "$HEADER_OUT"
 
   PAYLOAD_BASE64=$(echo -n $PAYLOAD_BASE64URL | tr '_-' '/+')
@@ -226,13 +226,13 @@ decode_jwt()
   fi
 
   if [ -z "$2" ]; then
-    PAYLOAD_OUT=$(echo $PAYLOAD_BASE64 | openssl base64 -d)
+    PAYLOAD_OUT=$(echo $PAYLOAD_BASE64 | openssl base64 -d -A)
     dump "Payload" "$PAYLOAD_OUT"
 
     echo "$PAYLOAD_OUT" | jq
 
   else
-    echo $PAYLOAD_BASE64 | openssl base64 -d -out "$2"
+    echo $PAYLOAD_BASE64 | openssl base64 -d -A -out "$2"
   fi
 }
 
