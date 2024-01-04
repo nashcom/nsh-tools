@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.0 02.01.2024                                                #
+# Version 0.9.1 04.01.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -29,6 +29,17 @@
 #                                                                         #
 ###########################################################################
 */
+
+/*
+Change History
+
+0.9.1 04.01.2024
+
+Add from phrase support (e.g. "John Doe" <jd@acme.com)
+
+
+*/
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -157,6 +168,7 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-server <FQDN/IP>      SMTP server DNS name or IP (Can be a relay host. By default MX record of the recipient's domain is used)\n");
     fprintf (stderr, "-host <FQDN>           Hostname to send in EHLO (by default use server's hostname)\n");
     fprintf (stderr, "-from <email>          From address\n");
+    fprintf (stderr, "-name <real name>      Name to add to the from address as a phrase\n");
     fprintf (stderr, "-to <email>            Recipient address\n");
     fprintf (stderr, "-subject <text>        Subject of message\n");
     fprintf (stderr, "-body <text>           Body of message\n");
@@ -512,6 +524,7 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszMailer,
                      const char *pszSmtpServerAddress,
                      const char *pszFrom,
+                     const char *pszFromName,
                      const char *pszSendTo,
                      const char *pszSubject,
                      const char *pszBody,
@@ -752,7 +765,11 @@ int SendSmtpMessage (const char *pszHostname,
 
     if (pszFrom)
     {
-        snprintf (g_szBuffer, sizeof (g_szBuffer), "From: %s%s", pszFrom, CRLF);
+        if (IsNullStr (pszFromName))
+            snprintf (g_szBuffer, sizeof (g_szBuffer), "From: %s%s", pszFrom, CRLF);
+        else
+            snprintf (g_szBuffer, sizeof (g_szBuffer), "From: \"%s\" <%s>%s", pszFromName, pszFrom, CRLF);
+
         SendBuffer (g_szBuffer);
     }
 
@@ -1022,6 +1039,7 @@ int main (int argc, const char *argv[])
     const char *pszSubject           = szSubject;
     const char *pszBody              = szBody;
     const char *pszMailer            = szMailer;
+    const char *pszFromName          = NULL;
     const char *pszHostname          = NULL;
     const char *pszBodyFile          = NULL;
     const char *pszSmtpServerAddress = NULL;
@@ -1094,6 +1112,17 @@ int main (int argc, const char *argv[])
                 goto InvalidSyntax;
 
             pszFrom = argv[consumed];
+        }
+
+        else if  (0 == strcasecmp (argv[consumed], "-name"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            pszFromName = argv[consumed];
         }
 
         else if  (0 == strcasecmp (argv[consumed], "-to"))
@@ -1247,7 +1276,9 @@ int main (int argc, const char *argv[])
     rc = SendSmtpMessage (pszHostname,
                           pszMailer,
                           pszSmtpServerAddress,
-                          pszFrom, pszSendTo,
+                          pszFrom,
+                          pszFromName,
+                          pszSendTo,
                           pszSubject,
                           pszBody,
                           pszBodyFile,
