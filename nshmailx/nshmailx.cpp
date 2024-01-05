@@ -44,6 +44,7 @@ Add from phrase support (e.g. "John Doe" <jd@acme.com)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <resolv.h>
 #include <pwd.h>
@@ -269,19 +270,24 @@ int GetTimeString (time_t *pTime, char *retpszTime, size_t MaxBuffer)
 
 size_t RecvBuffer()
 {
-    int     ret       = 0;
-    size_t  readbytes = 0;
+    int    ret       = 0;
+    size_t readbytes = 0;
 
     if (g_pSSL)
     {
         ret = SSL_read_ex (g_pSSL, g_szBuffer, MAX_BUFFER_LEN, &readbytes);
 
         if (ret < 0)
-            readbytes = ret;
+            readbytes = 0;
     }
     else
     {
-        readbytes = BIO_read (g_pBio, g_szBuffer, MAX_BUFFER_LEN);
+        ret = BIO_read (g_pBio, g_szBuffer, MAX_BUFFER_LEN);
+
+        if (ret < 0)
+            readbytes = 0;
+        else
+            readbytes = ret;
     }
 
     if (readbytes < 0)
@@ -393,9 +399,8 @@ int CopyFromToBio (BIO *pBioIn, BIO *pBioOut)
 {
     /* Returns 1 for success */
 
-    int    ret    = 0;
-    size_t writebytes = 0;
-    size_t readbytes  = 0;
+    int  writebytes = 0;
+    int  readbytes  = 0;
 
     if (NULL == pBioIn)
         return 0;
@@ -405,23 +410,22 @@ int CopyFromToBio (BIO *pBioIn, BIO *pBioOut)
 
     while (1)
     {
-        ret = BIO_read_ex (pBioIn, g_szBuffer, sizeof (g_szBuffer)-1, &readbytes);
-
-        if (1 != ret)
-        {
-            break;
-        }
+        readbytes = BIO_read (pBioIn, g_szBuffer, sizeof (g_szBuffer)-1);
 
         if (0 == readbytes)
             break;
 
-        ret = BIO_write_ex (pBioOut, g_szBuffer, readbytes, &writebytes);
+        if (readbytes < 0)
+            return readbytes;
+
+        writebytes = BIO_write (pBioOut, g_szBuffer, readbytes);
+
+        if (writebytes < 0)
+            return writebytes;
 
     } /* while */
 
-    ret = 1;
-
-    return ret;
+    return 1;
 }
 
 
@@ -433,7 +437,7 @@ size_t GetMxRecord (const char *pszDomain, size_t MaxBuffer, char *retpszBuffer,
     int    LowestPriority        = 0;
     struct __res_state ResState  = {0};
     ns_msg nsMsg = {0};
-    ns_rr  rr    = {0};
+    ns_rr  rr    = {{0}};
     
     int  ret      = 0;
     int  res_init = 0;

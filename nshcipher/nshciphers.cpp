@@ -1426,7 +1426,7 @@ int main(int argc, char *argv[])
 
 #ifdef _WIN32
 #else
-    struct sigaction SignalAction = {0};
+    struct sigaction SignalAction = {{0}};
 
     /* Ignore broken pipes, which can happen when the remote side is not behaving well */
     SignalAction.sa_handler = SIG_IGN;
