@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.1 04.01.2024                                                #
+# Version 0.9.2 05.01.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -37,9 +37,13 @@ Change History
 
 Add from phrase support (e.g. "John Doe" <jd@acme.com)
 
+0.9.2 05.01.2024
+
+Add basic support for LibreSSL on MacOS
 
 */
 
+#define VERSION "0.9.2"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,12 +53,11 @@ Add from phrase support (e.g. "John Doe" <jd@acme.com)
 #include <resolv.h>
 #include <pwd.h>
 
+#include <openssl/opensslv.h>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
-
-#define VERSION "0.9.0"
 
 #define MAX_BUFFER_LEN 65535
 
@@ -670,8 +673,14 @@ int SendSmtpMessage (const char *pszHostname,
 
         SSL_set_tlsext_host_name (g_pSSL, pszSmtpServerAddress);
 
+
+#ifdef LIBRESSL_VERSION_NUMBER
+        if (bECDSA)
+            LogError ("ECDSA option currently not supported on LibreSSL");
+#else
         if (bECDSA)
             SSL_set1_sigalgs_list (g_pSSL, "ECDSA+SHA256");
+#endif
 
         SSL_set_bio (g_pSSL, g_pBio, g_pBio);
 
@@ -1067,6 +1076,7 @@ int main (int argc, const char *argv[])
         else if  ( (0 == strcasecmp (argv[consumed], "-version")) || (0 == strcasecmp (argv[consumed], "--version")) || (0 == strcasecmp (argv[consumed], "-ver")) )
         {
             PrintVersion();
+            ret = 0;
             goto Done;
         }
 
