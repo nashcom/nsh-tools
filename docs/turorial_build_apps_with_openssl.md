@@ -136,12 +136,23 @@ port install libressl-devel
 
 # Build OpenSSL 3.2.0 release
 
-Once you have your development environment in place, you can clone (create a local instance of the project) directly from GitHub and compile OpenSSL from scratch.
-This will provide the link libs needed for statically linking.
+There are basically two options to compile and link applications:
 
-Another option would be just to use the native installed Linux OpenSSL development environment matching the Linux distribution's OpenSSL version.
+- Use dynamically linked libs from the installed Linux OpenSSL development environment matching the Linux distribution's OpenSSL version
+- Get statically link libraries to link OpenSSL directly into your application
 
-The build steps are pretty simple.
+If you just want to dynamically link, compiling OpenSSL from scratch can be skipped.
+The makefile of **nshmailx** can consume either the dynamically link libs or the static libs as described before.
+
+OpenSSL is available directly on GitHub, which is the place most Open Source software is maintained today.
+There are multiple ways to consume a GutHub project. You could download and extract a tar. 
+But if you are connected to the Internet directly, using the **git** client is the most natural way to work with GitHub projects.
+
+The command used is **clone**, which creates a local instance of a project.
+This could be just to consume the project or to make changes and commit them back to the project.
+
+
+## Build steps
 
 - Create a new local directory to clone all your repositories.
   I am always using `/local/github` for consistency on Linux.
@@ -168,7 +179,7 @@ make
 ```
 
 
-## Result of compile compand
+## Result of compile command
 
 The result is a local new copy of OpenSSL, which is not installed on your Linux machine as the main OpenSSL version.
 There is an optional `make install` step to install OpenSSL. But for development purposes the local OpenSSL version is exactly what is needed.
