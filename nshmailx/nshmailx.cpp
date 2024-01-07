@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.3 07.01.2024                                                #
+# Version 0.9.4 07.01.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -45,10 +45,14 @@ Add basic support for LibreSSL on MacOS
 
 Basic bsd-mailx compatibility
 
+0.9.4 07.01.2024
+
+More mailx compatibility and basic -cc and -bcc support
+
 
 */
 
-#define VERSION "0.9.3"
+#define VERSION "0.9.4"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,19 +110,20 @@ void LogWarning (const char *pszErrorText)
 
 void LogInvalidOption (const char *pszOption)
 {
-    pid_t   ppid = getppid();
-    ssize_t ret_size = 0;
+    struct  tm TimeTM = {0};
+    ssize_t ret_size  = 0;
+    FILE    *fp       = NULL;
+    pid_t   ppid      = getppid();
+    time_t  tNow      = time (NULL);
+
     char    szProcess[2048] = {0};
     char    szBinary[2048]  = {0};
     char    szTime[100]     = {0};
 
-    time_t tNow = time (NULL);
-    struct tm TimeTM = {0};
-
-    FILE *fp = NULL;
-
     if (NULL == pszOption)
         return;
+
+    fprintf (stderr, "Warning - Unknown option: [%s]\n", pszOption);
 
     fp = fopen ("/tmp/nshmailx.log", "a");
 
@@ -575,6 +580,8 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszFrom,
                      const char *pszFromName,
                      const char *pszSendTo,
+                     const char *pszCopyTo,
+                     const char *pszBlindCopyTo,
                      const char *pszSubject,
                      const char *pszBody,
                      const char *pszBodyFile,
@@ -619,7 +626,7 @@ int SendSmtpMessage (const char *pszHostname,
         pszHostname = szHostname;
     }
 
-    if (IsNullStr (pszSendTo))
+    if  ((IsNullStr (pszSendTo)) && (IsNullStr (pszCopyTo)) && (IsNullStr (pszBlindCopyTo)))
     {
         LogError ("No recipient specified");
         goto Done;
@@ -632,9 +639,15 @@ int SendSmtpMessage (const char *pszHostname,
         pszFrom = szFrom;
     }
 
+    /* Get SMTP server from first mail address */
     if (NULL == pszSmtpServerAddress)
     {
-        pszDomain = strchr (pszSendTo, '@');
+        if (pszSendTo)
+            pszDomain = strchr (pszSendTo, '@');
+        else if (pszCopyTo)
+            pszDomain = strchr (pszCopyTo, '@');
+        else if (pszBlindCopyTo)
+            pszDomain = strchr (pszBlindCopyTo, '@');
 
         if (pszDomain)
         {
@@ -774,6 +787,18 @@ int SendSmtpMessage (const char *pszHostname,
         SendBuffer (g_szBuffer);
     }
 
+    if (pszCopyTo)
+    {
+        snprintf (g_szBuffer, sizeof (g_szBuffer), "RCPT TO:<%s>%s", pszCopyTo, CRLF);
+        SendBuffer (g_szBuffer);
+    }
+
+    if (pszBlindCopyTo)
+    {
+        snprintf (g_szBuffer, sizeof (g_szBuffer), "RCPT TO:<%s>%s", pszBlindCopyTo, CRLF);
+        SendBuffer (g_szBuffer);
+    }
+
     if((rc = GetReturnCode()))
        goto Quit;
 
@@ -791,6 +816,12 @@ int SendSmtpMessage (const char *pszHostname,
     if (pszSendTo)
     {
         snprintf (g_szBuffer, sizeof (g_szBuffer), "To: %s%s", pszSendTo, CRLF);
+        SendBuffer (g_szBuffer);
+    }
+
+    if (pszCopyTo)
+    {
+        snprintf (g_szBuffer, sizeof (g_szBuffer), "CC: %s%s", pszCopyTo, CRLF);
         SendBuffer (g_szBuffer);
     }
 
@@ -1083,17 +1114,14 @@ int main (int argc, const char *argv[])
     int ret = 1;
     int consumed = 1;
 
-    const char szMailer[]            = "";
-    const char szFrom[]              = "";
-    const char szSendTo[]            = "";
-    const char szSubject[]           = "";
-    const char szBody[]              = "";
 
-    const char *pszFrom              = szFrom;
-    const char *pszSendTo            = szSendTo;
-    const char *pszSubject           = szSubject;
-    const char *pszBody              = szBody;
-    const char *pszMailer            = szMailer;
+    const char *pszFrom              = NULL;
+    const char *pszSendTo            = NULL;
+    const char *pszCopyTo            = NULL;
+    const char *pszBlindCopyTo       = NULL;
+    const char *pszSubject           = NULL;
+    const char *pszBody              = NULL;
+    const char *pszMailer            = NULL;
     const char *pszFromName          = NULL;
     const char *pszHostname          = NULL;
     const char *pszBodyFile          = NULL;
@@ -1197,6 +1225,31 @@ int main (int argc, const char *argv[])
             pszSendTo = argv[consumed];
         }
 
+        else if ( (0 == strcasecmp (argv[consumed], "-cc")) ||
+                  (0 == strcasecmp (argv[consumed], "-c")) )
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            pszCopyTo = argv[consumed];
+        }
+
+        else if ( (0 == strcasecmp (argv[consumed], "-bcc")) ||
+                  (0 == strcasecmp (argv[consumed], "-b")) )
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            pszBlindCopyTo = argv[consumed];
+        }
+
+
         else if ( (0 == strcasecmp (argv[consumed], "-subject")) ||
                   (0 == strcasecmp (argv[consumed], "-s")) )
         {
@@ -1288,7 +1341,7 @@ int main (int argc, const char *argv[])
         consumed++;
     } /* while */
 
-    if (IsNullStr (pszSendTo))
+    if  ((IsNullStr (pszSendTo)) && (IsNullStr (pszCopyTo)) && (IsNullStr (pszBlindCopyTo)))
     {
         LogError ("No recipient specified");
         goto Done;
@@ -1354,6 +1407,8 @@ int main (int argc, const char *argv[])
                           pszFrom,
                           pszFromName,
                           pszSendTo,
+                          pszCopyTo,
+                          pszBlindCopyTo,
                           pszSubject,
                           pszBody,
                           pszBodyFile,

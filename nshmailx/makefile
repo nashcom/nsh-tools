@@ -47,6 +47,13 @@ $(PROGRAM): $(PROGRAM).o
 $(PROGRAM).o: $(PROGRAM).cpp
 	$(CC)  $(CFLAGS) $(PROGRAM).cpp $(SSL_INCLUDE_PATH)
 
+install: all
+	sudo cp -f $(PROGRAM) /usr/bin/nshmailx
+
+mailx: install
+	sudo ln -s -f /usr/bin/nshmailx /usr/bin/mailx
+	sudo ln -s -f /usr/bin/nshmailx /usr/bin/mail
+
 clean:
 	rm -f $(PROGRAM) *.o
 
