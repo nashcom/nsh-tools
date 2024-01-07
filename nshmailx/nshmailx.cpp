@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.2 05.01.2024                                                #
+# Version 0.9.3 07.01.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -41,9 +41,14 @@ Add from phrase support (e.g. "John Doe" <jd@acme.com)
 
 Add basic support for LibreSSL on MacOS
 
+0.9.3 07.01.2024
+
+Basic bsd-mailx compatibility
+
+
 */
 
-#define VERSION "0.9.2"
+#define VERSION "0.9.3"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +101,43 @@ void LogWarning (const char *pszErrorText)
         return;
 
     fprintf (stderr, "Warning: %s\n\n", pszErrorText);
+}
+
+
+void LogInvalidOption (const char *pszOption)
+{
+    pid_t   ppid = getppid();
+    ssize_t ret_size = 0;
+    char    szProcess[2048] = {0};
+    char    szBinary[2048]  = {0};
+    char    szTime[100]     = {0};
+
+    time_t tNow = time (NULL);
+    struct tm TimeTM = {0};
+
+    FILE *fp = NULL;
+
+    if (NULL == pszOption)
+        return;
+
+    fp = fopen ("/tmp/nshmailx.log", "a");
+
+    if (NULL == fp)
+        return;
+
+    snprintf (szProcess, sizeof (szProcess), "/proc/%d/exe", ppid);
+    ret_size = readlink (szProcess, szBinary, sizeof (szBinary));
+
+    if (0 == ret_size)
+        *szBinary = '\0';
+
+    localtime_r (&tNow, &TimeTM);
+    strftime (szTime, sizeof (szTime)-1, "%Y-%m-%d %H:%M:%S %z", &TimeTM);
+
+    fprintf (fp, "%s - pid: %d, bin: %s, unknown option: [%s]\n", szTime, ppid, szBinary, pszOption);
+
+    fclose (fp);
+    fp = NULL;
 }
 
 
@@ -1067,35 +1109,39 @@ int main (int argc, const char *argv[])
 
     while (argc > consumed)
     {
-        if  ( (0 == strcasecmp (argv[consumed], "-help")) || (0 == strcasecmp (argv[consumed], "-h")) || (0 == strcasecmp (argv[consumed], "-?")) )
+        if  ( (0 == strcasecmp (argv[consumed], "-help")) ||
+              (0 == strcasecmp (argv[consumed], "-h")) || 
+              (0 == strcasecmp (argv[consumed], "-?")) )
         {
             PrintHelpText(g_ProgramName);
             goto Done;
         }
 
-        else if  ( (0 == strcasecmp (argv[consumed], "-version")) || (0 == strcasecmp (argv[consumed], "--version")) || (0 == strcasecmp (argv[consumed], "-ver")) )
+        else if  ( (0 == strcasecmp (argv[consumed], "-version")) ||
+                   (0 == strcasecmp (argv[consumed], "--version")) ||
+                   (0 == strcasecmp (argv[consumed], "-ver")) )
         {
             PrintVersion();
             ret = 0;
             goto Done;
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-notls"))
+        else if (0 == strcasecmp (argv[consumed], "-notls"))
         {
             bUseTLS = false;
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-ec"))
+        else if (0 == strcasecmp (argv[consumed], "-ec"))
         {
             bECDSA = true;
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-v"))
+        else if (0 == strcasecmp (argv[consumed], "-v"))
         {
             g_Verbose++;
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-host"))
+        else if (0 == strcasecmp (argv[consumed], "-host"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1106,7 +1152,7 @@ int main (int argc, const char *argv[])
             pszHostname = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-server"))
+        else if (0 == strcasecmp (argv[consumed], "-server"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1117,7 +1163,8 @@ int main (int argc, const char *argv[])
             pszSmtpServerAddress = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-from"))
+        else if ( (0 == strcasecmp (argv[consumed], "-from")) ||
+                  (0 == strcasecmp (argv[consumed], "-r")) )
         {
             consumed++;
             if (consumed >= argc)
@@ -1128,7 +1175,7 @@ int main (int argc, const char *argv[])
             pszFrom = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-name"))
+        else if (0 == strcasecmp (argv[consumed], "-name"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1139,7 +1186,7 @@ int main (int argc, const char *argv[])
             pszFromName = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-to"))
+        else if (0 == strcasecmp (argv[consumed], "-to"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1150,7 +1197,8 @@ int main (int argc, const char *argv[])
             pszSendTo = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-subject"))
+        else if ( (0 == strcasecmp (argv[consumed], "-subject")) ||
+                  (0 == strcasecmp (argv[consumed], "-s")) )
         {
             consumed++;
             if (consumed >= argc)
@@ -1161,7 +1209,7 @@ int main (int argc, const char *argv[])
             pszSubject = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-body"))
+        else if (0 == strcasecmp (argv[consumed], "-body"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1172,7 +1220,7 @@ int main (int argc, const char *argv[])
             pszBody = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-mailer"))
+        else if (0 == strcasecmp (argv[consumed], "-mailer"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1183,7 +1231,7 @@ int main (int argc, const char *argv[])
             pszMailer = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-file"))
+        else if (0 == strcasecmp (argv[consumed], "-file"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1196,7 +1244,7 @@ int main (int argc, const char *argv[])
             pszBodyFile = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-att"))
+        else if (0 == strcasecmp (argv[consumed], "-att"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1209,7 +1257,7 @@ int main (int argc, const char *argv[])
             pszAttachmenFilePath = argv[consumed];
         }
 
-        else if  (0 == strcasecmp (argv[consumed], "-attname"))
+        else if (0 == strcasecmp (argv[consumed], "-attname"))
         {
             consumed++;
             if (consumed >= argc)
@@ -1219,9 +1267,22 @@ int main (int argc, const char *argv[])
 
             pszAttachmenName = argv[consumed];
         }
+
+        else if (0 == strcasecmp (argv[consumed], "--"))
+        {
+            /* Ignored parameter */
+        }
+
         else
         {
-            goto InvalidSyntax;
+            if ('-' == *argv[consumed])
+            {
+                LogInvalidOption (argv[consumed]);
+            }
+            else
+            {
+                pszSendTo = argv[consumed];
+            }
         }
 
         consumed++;
