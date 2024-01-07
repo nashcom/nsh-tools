@@ -108,7 +108,7 @@ void LogWarning (const char *pszErrorText)
 }
 
 
-void LogInvalidOption (const char *pszOption)
+void LogInvalidOption (const char *pszCommand, const char *pszOption)
 {
     struct  tm TimeTM = {0};
     ssize_t ret_size  = 0;
@@ -118,12 +118,18 @@ void LogInvalidOption (const char *pszOption)
 
     char    szProcess[2048] = {0};
     char    szBinary[2048]  = {0};
+    char    szExe[2048]     = {0};
     char    szTime[100]     = {0};
 
     if (NULL == pszOption)
         return;
 
     fprintf (stderr, "Warning - Unknown option: [%s]\n", pszOption);
+
+    ret_size = readlink ("/proc/self/exe", szExe, sizeof (szExe));
+
+    if (0 == ret_size)
+        *szExe = '\0';
 
     fp = fopen ("/tmp/nshmailx.log", "a");
 
@@ -139,7 +145,7 @@ void LogInvalidOption (const char *pszOption)
     localtime_r (&tNow, &TimeTM);
     strftime (szTime, sizeof (szTime)-1, "%Y-%m-%d %H:%M:%S %z", &TimeTM);
 
-    fprintf (fp, "%s - pid: %d, bin: %s, unknown option: [%s]\n", szTime, ppid, szBinary, pszOption);
+    fprintf (fp, "%s exe: %s, ppid: %d, ppbin: %s, unknown option: %s [%s]\n", szTime, szExe, ppid, szBinary, pszCommand, pszOption);
 
     fclose (fp);
     fp = NULL;
@@ -220,7 +226,9 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-host <FQDN>           Hostname to send in EHLO (by default use server's hostname)\n");
     fprintf (stderr, "-from <email>          From address\n");
     fprintf (stderr, "-name <real name>      Name to add to the from address as a phrase\n");
-    fprintf (stderr, "-to <email>            Recipient address\n");
+    fprintf (stderr, "-to <email>            Send to recipient address\n");
+    fprintf (stderr, "-cc <email>            Copy to recipient address\n");
+    fprintf (stderr, "-bcc <email>           Blind copy to recipient address\n");
     fprintf (stderr, "-subject <text>        Subject of message\n");
     fprintf (stderr, "-body <text>           Body of message\n");
     fprintf (stderr, "-file <filepath>       File send as body (specify '-' to write stdin to the UTF-8 formatted body)\n");
@@ -229,6 +237,9 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-mailer <name>         Mailer Name\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
     fprintf (stderr, "-v                     Verbose logging\n");
+
+    fprintf (stderr, "\n");
+    fprintf (stderr, "Note: Also supports Linux BSD mailx command line sending options\n");
     fprintf (stderr, "\n");
 }
 
@@ -1330,7 +1341,11 @@ int main (int argc, const char *argv[])
         {
             if ('-' == *argv[consumed])
             {
-                LogInvalidOption (argv[consumed]);
+                if (strstr (argv[0], "nshmailx"))
+                    goto InvalidSyntax;
+
+                /* Trace mailx and other symbolic link invocations */
+                LogInvalidOption (argv[0], argv[consumed]);
             }
             else
             {
