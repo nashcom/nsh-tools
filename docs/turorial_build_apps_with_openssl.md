@@ -71,35 +71,6 @@ Docker/Podman containers are a good way to quickly setup and test a different di
 But the same steps will work on a native installed Linux instance.
 
 
-## Ubuntu 22.04 LTS in a container
-
-Ubuntu is one of the most common environments and it comes with it's own packet manager.
-So instead of `yum` the Debian packet manager `apt` is used.
-Some packages are named differently, which might be a bit confusing.
-
-```
-docker run -it --rm ubuntu
-
-apt -y update
-apt -y install git gcc++ make openssl libssl-dev
-```
-
-
-## CentOS Stream 9 in a container
-
-CentOS Stream is a common used environment by many customers.
-It is a free of charge Linux, which uses the `yum/dnf` stack for installing software.
-This is very comparable to **Redhat** clones like **AlmaLinux** or **RockyLinux**.
-
-```
-docker run -it --rm quay.io/centos/centos:stream9
-
-yum -y update
-yum -y install git g++ make openssl openssl-devel perl
-
-```
-
-
 ## Redhat UBI 9 Minimal in a container
 
 Probably the best platform to build on is vanilla Redhat Enterprise Linux.
@@ -109,11 +80,70 @@ The full image provides a full yum/dnf stack.
 The smaller minimum image also works well for development environments and has much less packet dependencies.
 But it comes with a different packet manager **microdnf** which is very similar to operate then **yum/dnf**.
 
-```
-docker run -it --rm registry.access.redhat.com/ubi9/ubi-minimal
+### Run a new Redhat UBI 9 Minimal container
 
+```
+docker run -it --name ubi9-build --rm registry.access.redhat.com/ubi9/ubi-minimal bash
+```
+
+### Install Development environment
+
+```
 microdnf -y update
 microdnf -y install git g++ make openssl openssl-devel perl
+```
+
+
+## Ubuntu LTS in a container (currently 22.04 LTS)
+
+Ubuntu is one of the most common environments and it comes with it's own packet manager.
+So instead of `yum` the Debian packet manager `apt` is used.
+Some packages are named differently, which might be a bit confusing.
+
+### Run a new Ubuntu container
+
+```
+docker run -it --name ubuntu-build --rm ubuntu bash
+```
+
+### Install Development environment
+
+```
+apt -y update
+apt -y install git g++ make openssl libssl-dev
+```
+
+
+### Run a new CentOS Stream 9 container
+
+CentOS Stream is a common used environment by many customers.
+It is a free of charge Linux, which uses the `yum/dnf` stack for installing software.
+This is very comparable to **Redhat** clones like **AlmaLinux** or **RockyLinux**.
+
+```
+docker run -it --name centos9-build --rm quay.io/centos/centos:stream9 bash
+```
+
+### Install Development environment
+
+```
+yum -y update
+yum -y install git g++ make openssl openssl-devel perl
+
+```
+
+
+### Run a new VMWare Photon 5 container
+
+```
+docker run -it --name photon-build --rm photon bash
+```
+
+### Install Development environment
+
+```
+tdnf -y update
+tdnf -y install git gcc linux-api-headers make openssl openssl-devel perl
 ```
 
 
@@ -249,3 +279,4 @@ SMTP Test Tool 0.9.2
 OpenSSL 3.2.0 23 Nov 2023
 (Build on: OpenSSL 3.2.0 23 Nov 2023)
 ```
+
