@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.4 07.01.2024                                                #
+# Version 0.9.5 08.01.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -49,10 +49,15 @@ Basic bsd-mailx compatibility
 
 More mailx compatibility and basic -cc and -bcc support
 
+0.9.5 08.01.2024
+
+Dump key and certificate information via OpenSSL code
+
 
 */
 
-#define VERSION "0.9.4"
+#define VERSION "0.9.5"
+#define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +72,13 @@ More mailx compatibility and basic -cc and -bcc support
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/evp.h>
+#include <openssl/x509v3.h>
+
+#ifdef LIBRESSL_VERSION_NUMBER
+#else
+#include <openssl/core_names.h>
+#endif
 
 #define MAX_BUFFER_LEN 65535
 
@@ -210,7 +222,8 @@ size_t GetLocalHostname (char *retpszHostname, size_t MaxBuffer)
 
 void PrintVersion()
 {
-    fprintf (stderr, "\nSMTP Test Tool %s\n", VERSION);
+    fprintf (stderr, "\nNash!Com SMTP Mail Tool %s\n", VERSION);
+    fprintf (stderr, "%s\n", COPYRIGHT);
     fprintf (stderr, "%s\n", OpenSSL_version(OPENSSL_VERSION));
     fprintf (stderr, "(Build on: %s)\n", OPENSSL_VERSION_TEXT);
 }
@@ -499,7 +512,7 @@ size_t GetMxRecord (const char *pszDomain, size_t MaxBuffer, char *retpszBuffer,
     struct __res_state ResState  = {0};
     ns_msg nsMsg = {0};
     ns_rr  rr    = {{0}};
-    
+
     int  ret      = 0;
     int  res_init = 0;
 
@@ -585,6 +598,377 @@ Done:
 }
 
 
+#ifdef LIBRESSL_VERSION_NUMBER
+
+int LogSSLInfos (SSL *pSSL)
+{
+    const char *pStr  = NULL;
+
+    if (NULL == pSSL)
+        goto Done;
+
+    /* For some reason LibreSSL does always return TLSv1/SSLv3. But the connection is still a TLS V1.2 connection */
+    pStr = SSL_get_cipher_version (pSSL);
+    if (pStr)
+       printf ("TLS Version: [%s]\n", pStr);
+
+    pStr = SSL_get_cipher (pSSL);
+    if (pStr)
+        printf ("TLS Cipher: [%s]\n", pStr);
+
+Done:
+    return 0;
+}
+
+#else
+
+int GetX509Names (X509 *pCert, int nid, int type, int RetBufferLen, char *pszRetBuffer)
+{
+    GENERAL_NAMES *pNames  = NULL;
+    GENERAL_NAME  *pEntry  = NULL;
+    unsigned char *pUtf8   = NULL;
+    char          *pBuffer = pszRetBuffer;
+
+    int LenUtf8  = 0;
+    int LenSan   = 0;
+    int CountSan = 0;
+    int i        = 0;
+    int count    = 0;
+
+    if (NULL == pszRetBuffer)
+        return 0;
+
+    if (0 == RetBufferLen)
+        return 0;
+
+    *pszRetBuffer = '\0';
+
+    if (!pCert)
+        goto Done;
+
+    pNames = (GENERAL_NAMES *) X509_get_ext_d2i (pCert, nid, NULL, NULL);
+
+    if (NULL == pNames)
+    {
+        goto Done;
+    }
+
+    count = sk_GENERAL_NAME_num (pNames);
+
+    if (0 == count)
+        goto Done;
+
+    for( i=0; i<count; ++i )
+    {
+        pEntry = sk_GENERAL_NAME_value (pNames, i);
+        if (!pEntry)
+        {
+            continue;
+        }
+
+        if (type == pEntry->type)
+        {
+            LenUtf8  = 0;
+            LenSan  = -1;
+            pUtf8 = NULL;
+
+            LenUtf8 = ASN1_STRING_to_UTF8 (&pUtf8, pEntry->d.dNSName);
+            if (pUtf8)
+               LenSan = (int) strlen((const char*)pUtf8);
+
+            if (LenUtf8 != LenSan)
+            {
+                LogError ("ASN1_STRING as incorrect size");
+                goto Done;
+            }
+
+            if (pUtf8 && LenUtf8 && LenSan && (LenUtf8 == LenSan))
+            {
+               if (pBuffer - pszRetBuffer + LenSan + 2 >= RetBufferLen)
+               {
+                   goto Done;
+               }
+
+               if (CountSan)
+               {
+                   *pBuffer++ = ',';
+                   *pBuffer++ = ' ';
+               }
+
+               memcpy (pBuffer, pUtf8, LenSan);
+               pBuffer += LenSan;
+               *pBuffer = '\0'; /* always terminate buffer */
+
+               CountSan++;
+            }
+
+            if (pUtf8)
+            {
+               OPENSSL_free (pUtf8);
+               pUtf8 = NULL;
+            }
+        }
+    } /* for */
+
+Done:
+
+    if (pNames)
+        GENERAL_NAMES_free (pNames);
+
+    if (pUtf8)
+        OPENSSL_free (pUtf8);
+
+    return CountSan;
+}
+
+#define X509_GET_NOT_BEFORE     1
+#define X509_GET_NOT_AFTER      2
+
+int AsnTimeGetDate (const ASN1_TIME *pTM, int wRetBufferLen, char *pszRetBuffer, struct tm *pretTM)
+{
+    struct tm tTime = {0};
+
+    if (pszRetBuffer && wRetBufferLen)
+        *pszRetBuffer = '\0';
+
+    if (pretTM)
+        memset (pretTM, 0, sizeof (struct tm));
+
+    if (pTM)
+    {
+        if (0 == ASN1_TIME_to_tm (pTM, &tTime))
+            goto Done;
+
+        if (pretTM)
+        {
+            memcpy (pretTM, &tTime, sizeof (struct tm));
+        }
+
+        if (pszRetBuffer && wRetBufferLen)
+        {
+            snprintf (pszRetBuffer, wRetBufferLen, "%04u.%02u.%02u %02u:%02u:%02u",
+                     tTime.tm_year+1900,
+                     tTime.tm_mon+1,
+                     tTime.tm_mday,
+                     tTime.tm_hour,
+                     tTime.tm_min,
+                     tTime.tm_sec);
+        }
+    }
+
+Done:
+    return 0;
+}
+
+
+int X509GetDate (const X509 *pX509, int NameType, int wRetBufferLen, char *pszRetBuffer, struct tm *pretTM)
+{
+    ASN1_TIME   const *pTM = NULL;
+
+    if (pszRetBuffer && wRetBufferLen)
+        *pszRetBuffer = '\0';
+
+    if (pretTM)
+        memset (pretTM, 0, sizeof (struct tm));
+
+    switch (NameType)
+    {
+        case X509_GET_NOT_BEFORE:
+            pTM = X509_get0_notBefore (pX509);
+            break;
+
+        case X509_GET_NOT_AFTER:
+            pTM = X509_get0_notAfter (pX509);
+            break;
+
+        default:
+            return 0;
+    } /* switch */
+
+    AsnTimeGetDate (pTM, wRetBufferLen, pszRetBuffer, pretTM);
+
+    return 0;
+}
+
+
+int LogKeyInfos (const char *pszHeader, EVP_PKEY *pKey, X509 *pCert)
+{
+    int ret     = 0;
+    int KeyType = 0;
+    int Bits    = 0;
+
+    size_t len  = 0;
+    char szBuffer [1024] = {0};
+
+    if (NULL == pszHeader)
+        return 0;
+
+    /* If no key is specified, get public key from cert */
+    if (NULL == pKey)
+    {
+        if (NULL == pCert)
+            goto Done;
+
+        pKey = X509_get0_pubkey (pCert); /* Don't free the key returned from this call! */
+
+        if (NULL == pKey)
+            goto Done;
+    }
+
+    KeyType = EVP_PKEY_base_id (pKey);
+
+    if (0 == KeyType)
+        goto Done;
+
+    Bits = EVP_PKEY_bits (pKey);
+
+    switch (KeyType)
+    {
+        case NID_ED25519:
+            printf ("%s: Ed25519 %d bit\n", pszHeader, Bits);
+            break;
+
+        case NID_ED448:
+            printf ("%s: Ed448 %d bit\n", pszHeader, Bits);
+            break;
+
+        case NID_X25519:
+            printf ("%s: X25519 %d bit\n", pszHeader, Bits);
+            break;
+
+        case NID_X448:
+            printf ("%s: X448 %d bit\n", pszHeader, Bits);
+            break;
+
+        case EVP_PKEY_RSA:
+            printf ("%s: RSA %d bit\n", pszHeader, Bits);
+            break;
+
+        case EVP_PKEY_RSA_PSS:
+            printf ("%s: RSA PSS %d bit\n", pszHeader, Bits);
+            break;
+
+        case EVP_PKEY_EC:
+
+            ret = EVP_PKEY_get_utf8_string_param (pKey, OSSL_PKEY_PARAM_GROUP_NAME, szBuffer, sizeof (szBuffer), &len);
+
+            if (ret)
+                printf ("%s: ECDSA %s\n", pszHeader, szBuffer);
+            break;
+
+        default:
+            printf ("%s: Unknown key type %d\n", pszHeader, KeyType);
+            break;
+
+    } /* switch */
+
+Done:
+    return 0;
+}
+
+
+int LogCertInfos (const char *pszHeader, X509 *pCert)
+{
+    int ret = 0;
+    const char *pStr  = NULL;
+    char szBuffer [10240] = {0};
+
+    printf ("--- [%s] ---\n", pszHeader);
+
+    GetX509Names (pCert, NID_subject_alt_name, GEN_DNS, sizeof(szBuffer)-1, szBuffer);
+
+    if (*szBuffer)
+        printf ("SAN: [%s]\n", szBuffer);
+
+    pStr = X509_NAME_oneline (X509_get_subject_name (pCert), szBuffer, sizeof (szBuffer)-1);
+
+    if (pStr)
+        printf ("Subject: [%s]\n", szBuffer);
+
+    pStr = X509_NAME_oneline (X509_get_issuer_name (pCert), szBuffer, sizeof (szBuffer)-1);
+
+    if (pStr)
+        printf ("Issuer: [%s]\n", szBuffer);
+
+    X509GetDate (pCert, X509_GET_NOT_BEFORE, sizeof (szBuffer), szBuffer, NULL);
+
+    if (*szBuffer)
+        printf ("Not before: [%s]\n", szBuffer);
+
+    X509GetDate (pCert, X509_GET_NOT_AFTER, sizeof (szBuffer),  szBuffer,  NULL);
+
+    if (*szBuffer)
+        printf ("Not after : [%s]\n", szBuffer);
+
+    /* Dump the leaf certificate */
+    if (g_Verbose)
+    {
+        printf ("\n");
+        PEM_write_X509 (stdout, pCert);
+    }
+
+    return ret;
+}
+
+
+int LogSSLInfos (SSL *pSSL)
+{
+    int ret = 0;
+    const char *pStr  = NULL;
+    EVP_PKEY   *pKey  = NULL;
+    X509       *pCert = NULL;
+
+    if (NULL == pSSL)
+        goto Done;
+
+    pStr = SSL_get_cipher_version (pSSL);
+    if (pStr)
+       printf ("TLS Version: [%s]\n", pStr);
+
+    pStr = SSL_get_cipher (pSSL);
+    if (pStr)
+        printf ("TLS Cipher: [%s]\n", pStr);
+
+    ret = SSL_get_peer_tmp_key (pSSL, &pKey);
+
+    if (0 == ret)
+        ret = SSL_get_tmp_key (pSSL, &pKey);
+
+    if (pKey)
+        LogKeyInfos ("Session Key", pKey, NULL);
+
+    pCert = SSL_get1_peer_certificate (pSSL);
+
+    if (NULL == pCert)
+    {
+        goto Done;
+    }
+
+    LogKeyInfos ("Certificate", NULL, pCert);
+    LogCertInfos ("Leaf Certificate", pCert);
+
+    printf ("\n");
+
+Done:
+
+    if (pCert)
+    {
+        X509_free (pCert);
+        pCert = NULL;
+    }
+
+    if (pKey)
+    {
+        EVP_PKEY_free (pKey);
+        pKey = NULL;
+    }
+
+    return ret;
+}
+
+#endif
+
+
 int SendSmtpMessage (const char *pszHostname,
                      const char *pszMailer,
                      const char *pszSmtpServerAddress,
@@ -605,6 +989,7 @@ int SendSmtpMessage (const char *pszHostname,
     int rc = 600;
     int CipherCount      = 0;
     int PriorityMX       = 0;
+
     char szConnect[80]   = {0};
     char szRandom[80]    = {0};
     char szTime[40]      = {0};
@@ -613,7 +998,6 @@ int SendSmtpMessage (const char *pszHostname,
     char szHostname[80]  = {0};
     char szFrom[255]     = {0};
     char szMX[2048]      = {0};
-
     char *pMem           = NULL;
 
     const char szLocalHost[] = "127.0.0.1";
@@ -627,9 +1011,7 @@ int SendSmtpMessage (const char *pszHostname,
 
     size_t MemSize = 0;
     size_t CountMX = 0;
-    time_t tNow = time (NULL);
-
-    const SSL_CIPHER *pSSLCipher = NULL;
+    time_t tNow    = time (NULL);
 
     if (IsNullStr (pszHostname))
     {
@@ -700,7 +1082,7 @@ int SendSmtpMessage (const char *pszHostname,
         goto Done;
     }
 
-    printf ("Connection established ...\n");
+    printf ("Connection established\n");
 
     if((rc = GetReturnCode()))
         goto Quit;
@@ -739,7 +1121,6 @@ int SendSmtpMessage (const char *pszHostname,
 
         SSL_set_tlsext_host_name (g_pSSL, pszSmtpServerAddress);
 
-
 #ifdef LIBRESSL_VERSION_NUMBER
         if (bECDSA)
             LogError ("ECDSA option currently not supported on LibreSSL");
@@ -761,20 +1142,9 @@ int SendSmtpMessage (const char *pszHostname,
             goto Quit;
         }
 
-        printf ("Handshake Done\n");
+        printf ("Handshake Done\n\n");
 
-        pSSLCipher = SSL_get_current_cipher (g_pSSL);
-
-        if (pSSLCipher)
-        {
-            pStr = SSL_CIPHER_get_version (pSSLCipher);
-            if (pStr)
-                printf ("TLS Version: [%s]\n", pStr);
-
-            pStr = SSL_CIPHER_get_name (pSSLCipher);
-            if (pStr)
-                printf ("TLS Cipher: [%s]\n", pStr);
-        }
+        LogSSLInfos (g_pSSL);
 
         snprintf (g_szBuffer, sizeof (g_szBuffer), "EHLO %s%s", pszHostname, CRLF);
         SendBuffer (g_szBuffer);
@@ -1149,7 +1519,7 @@ int main (int argc, const char *argv[])
     while (argc > consumed)
     {
         if  ( (0 == strcasecmp (argv[consumed], "-help")) ||
-              (0 == strcasecmp (argv[consumed], "-h")) || 
+              (0 == strcasecmp (argv[consumed], "-h")) ||
               (0 == strcasecmp (argv[consumed], "-?")) )
         {
             PrintHelpText(g_ProgramName);
@@ -1437,7 +1807,7 @@ int main (int argc, const char *argv[])
         ret = 0;
     else
         fprintf (stderr, "ERROR: Failed to send Message. Status: %d, Error: [%s]\n", rc, g_szErrorBuffer);
-    
+
 Done:
 
     return ret;
