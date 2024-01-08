@@ -1,6 +1,14 @@
 
 # Tutorial: Compile and Link C/C++ applications with OpenSSL on Linux and MacOS
 
+This tutorial explains how to compile a C/C++ application on Windows and MacOS with OpenSSL.
+OpenSSL is an essential part of Linux and ships with every Linux distribution.
+The OpenSSL development package containing the link libraries and header files is a separate package.
+It allows to compile and link OpenSSL applications dynamically.
+For statical linking OpenSSL needs to be downloaded and and compiled.
+The following tutorial shows the different options and steps required.
+
+
 To compile and link C/C++ applications with OpenSSL, you need a build environment.
 Different Linux distributions require different packets to be installed.
 This tutorial shows how to build OpenSSL applications on different platforms.
@@ -68,7 +76,22 @@ The following section describes shortly different environments and the steps to 
 I have been using a container based approach to allow to switch between different Linux distributions and show the different steps to take in each distribution.
 
 Docker/Podman containers are a good way to quickly setup and test a different distribution.
-But the same steps will work on a native installed Linux instance.
+But the same steps will work on a native installed Linux instance as well.
+
+This tutorial uses Docker containers to run different environments.
+Each of the sections contains a sample Docker run command to create an container for each build platform.
+
+Containers allow to run an instance of a different Linux distribution on the same Linux machine.
+
+This tutorial starts containers interactive and brings us directly into the container.
+The command `docker run -it` starts an interactive session.
+Using `--rm` removes the container when the bash started inside the container terminates.
+Container images are usually "pulled" from the Docker registry.
+Some Linux distributions provide their Linux base images on their own registry like Redhat as used in this document.
+
+Depending on the environment instead of [Docker](https://www.docker.com/) an alternative project often used is [Podman](https://podman.io/).
+Both projects provide detailed information how to start. The `podman` and `docker` command provide almost the same command line.
+
 
 
 ## Redhat UBI 9 Minimal in a container
@@ -80,7 +103,15 @@ The full image provides a full yum/dnf stack.
 The smaller minimum image also works well for development environments and has much less packet dependencies.
 But it comes with a different packet manager **microdnf** which is very similar to operate then **yum/dnf**.
 
+The Redhat Enterprise 9.x stack uses glibc 2.34, which offers you best compatibility with other distributions.
+A newer [glibc](https://www.gnu.org/software/libc/) compiled binary would not run on a older glibc version. 
+Glibc is basically the C run-time which is the base of every Linux distribution. 
+
+
 ### Run a new Redhat UBI 9 Minimal container
+
+The following command line starts a new container and intercatively jumps into the container to allow any kind of operations.
+Because `--rm` is specified, the container is automatically removed on exit.
 
 ```
 docker run -it --name ubi9-build --rm registry.access.redhat.com/ubi9/ubi-minimal bash
@@ -132,6 +163,7 @@ yum -y install git g++ make openssl openssl-devel perl
 
 ```
 
+## VMWare Photon 5 container
 
 ### Run a new VMWare Photon 5 container
 
@@ -279,4 +311,3 @@ SMTP Test Tool 0.9.2
 OpenSSL 3.2.0 23 Nov 2023
 (Build on: OpenSSL 3.2.0 23 Nov 2023)
 ```
-

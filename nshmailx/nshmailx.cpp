@@ -202,6 +202,7 @@ bool GetUser (uid_t uid, size_t MaxReturnBuffer, char *retpszBuffer)
     return true;
 }
 
+
 size_t GetLocalHostname (char *retpszHostname, size_t MaxBuffer)
 {
     if (NULL == retpszHostname)
@@ -424,6 +425,7 @@ int GetReturnCode()
     return rc;
 }
 
+
 int SendBuffer (const char *pszBuffer)
 {
     int ret = 0;
@@ -599,6 +601,15 @@ Done:
 
 
 #ifdef LIBRESSL_VERSION_NUMBER
+
+/* LibreSSL isn't the same as OpenSSL and would need more work to provide the same functionality.
+
+   The recommended target environment on MacOS is statically linked OpenSSL.
+   The basic functionality of nshmailx works on LibreSSL as well.
+   But specific TLS/SSL session information is not checked on LibreSSL.
+   The following is a basic routine to dump the Cipher at least.
+
+ */
 
 int LogSSLInfos (SSL *pSSL)
 {
@@ -1494,7 +1505,6 @@ int main (int argc, const char *argv[])
     int rc  = 0;
     int ret = 1;
     int consumed = 1;
-
 
     const char *pszFrom              = NULL;
     const char *pszSendTo            = NULL;

@@ -24,6 +24,9 @@ SSL_INCLUDE_PATH=-I/opt/local/include
 $(info )
 $(info Build with LibreSSL statically linked)
 $(info )
+$(info Some TLS/SSL logging functionality is not available on LibreSSL.)
+$(info Consider using statically linked OpenSSL instead.)
+$(info )
 
 # Else just link dynamically with OpenSSL
 else
