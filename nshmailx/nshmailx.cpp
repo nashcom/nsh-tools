@@ -54,9 +54,14 @@ More mailx compatibility and basic -cc and -bcc support
 Dump key and certificate information via OpenSSL code
 
 
+0.9.6 20.02.2024
+
+- Dump received and verified chain with verbose output
+- New -pem option to dump certificate/key PEM data
+
 */
 
-#define VERSION "0.9.5"
+#define VERSION "0.9.6"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -96,7 +101,7 @@ char g_ProgramName[] = "nshmailx";
 char g_szBuffer[MAX_BUFFER_LEN+1] = {0};
 char g_szErrorBuffer[4096] = {0};
 int  g_Verbose = 0;
-
+int  g_DumpPEM = 0;
 
 void strdncpy (char *pszStr, const char *ct, size_t n)
 {
@@ -250,7 +255,8 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-attname <filename>    File name for file to attach\n");
     fprintf (stderr, "-mailer <name>         Mailer Name\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
-    fprintf (stderr, "-v                     Verbose logging\n");
+    fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
+    fprintf (stderr, "-pem                   Dump pem data with cert/key info (specify twice for PEM of certificate chain)\n");
 
     fprintf (stderr, "\n");
     fprintf (stderr, "Note: Also supports Linux BSD mailx command line sending options\n");
@@ -611,6 +617,15 @@ Done:
 
  */
 
+
+int LogChainInfos (SSL *pSSL)
+{
+    int   ret = 0;
+    X509 *pCert = NULL;
+
+    return ret;
+}
+
 int LogSSLInfos (SSL *pSSL)
 {
     const char *pStr  = NULL;
@@ -802,7 +817,7 @@ int X509GetDate (const X509 *pX509, int NameType, int wRetBufferLen, char *pszRe
 }
 
 
-int LogKeyInfos (const char *pszHeader, EVP_PKEY *pKey, X509 *pCert)
+int LogKeyInfos (const char *pszHeader, EVP_PKEY *pKey, X509 *pCert, bool bDumpPEM)
 {
     int ret     = 0;
     int KeyType = 0;
@@ -873,54 +888,121 @@ int LogKeyInfos (const char *pszHeader, EVP_PKEY *pKey, X509 *pCert)
 
     } /* switch */
 
+    if (bDumpPEM)
+    {
+        printf ("\n");
+        PEM_write_PUBKEY (stdout, pKey);
+    }
+
+    printf ("\n");
+
 Done:
     return 0;
 }
 
 
-int LogCertInfos (const char *pszHeader, X509 *pCert)
+int LogCertInfos (const char *pszHeader, X509 *pCert, bool bDumpPEM)
 {
     int ret = 0;
     const char *pStr  = NULL;
     char szBuffer [10240] = {0};
 
-    printf ("--- [%s] ---\n", pszHeader);
+    if (NULL == pszHeader)
+        return 0;
+
+    printf ("--- %s ---\n", pszHeader);
+
+    if (NULL == pCert)
+        return 0;
 
     GetX509Names (pCert, NID_subject_alt_name, GEN_DNS, sizeof(szBuffer)-1, szBuffer);
 
     if (*szBuffer)
-        printf ("SAN: [%s]\n", szBuffer);
+        printf ("SAN        : %s\n", szBuffer);
 
     pStr = X509_NAME_oneline (X509_get_subject_name (pCert), szBuffer, sizeof (szBuffer)-1);
 
     if (pStr)
-        printf ("Subject: [%s]\n", szBuffer);
+        printf ("Subject    : %s\n", szBuffer);
 
     pStr = X509_NAME_oneline (X509_get_issuer_name (pCert), szBuffer, sizeof (szBuffer)-1);
 
     if (pStr)
-        printf ("Issuer: [%s]\n", szBuffer);
+        printf ("Issuer     : %s\n", szBuffer);
 
     X509GetDate (pCert, X509_GET_NOT_BEFORE, sizeof (szBuffer), szBuffer, NULL);
 
     if (*szBuffer)
-        printf ("Not before: [%s]\n", szBuffer);
+        printf ("Not before : %s\n", szBuffer);
 
     X509GetDate (pCert, X509_GET_NOT_AFTER, sizeof (szBuffer),  szBuffer,  NULL);
 
     if (*szBuffer)
-        printf ("Not after : [%s]\n", szBuffer);
+        printf ("Not after  : %s\n", szBuffer);
 
     /* Dump the leaf certificate */
-    if (g_Verbose)
+    if (bDumpPEM)
     {
         printf ("\n");
         PEM_write_X509 (stdout, pCert);
     }
 
+    printf ("\n");
+
     return ret;
 }
 
+
+int LogChain (const char *pszHeader, STACK_OF(X509) *pChain)
+{
+    int   ret   = 0;
+    int   i     = 0;
+    int   count = 0;
+    X509 *pCert = NULL;
+
+    char szBuffer [1024] = {0};
+
+    if (NULL == pszHeader)
+        return 0;
+
+    if (NULL == pChain)
+        return 0;
+
+    count = sk_X509_num (pChain);
+
+    if (g_Verbose < 1)
+    {
+        printf ("%s(%d)\n", pszHeader, count);
+        return 0;
+    }
+ 
+    for (i=0; i<count; ++i)
+    {
+        snprintf (szBuffer, sizeof (szBuffer), "%s #%d", pszHeader, i);
+
+        pCert = sk_X509_value (pChain, i);
+        LogCertInfos (szBuffer, pCert, g_DumpPEM > 1 ? true : false);
+    }
+
+    return ret;
+}
+
+int LogChainInfos (SSL *pSSL)
+{
+    int   ret   = 0;
+    STACK_OF(X509) *pChain;
+
+    if (NULL == pSSL)
+        return 0;
+
+    pChain = SSL_get_peer_cert_chain (pSSL);
+    LogChain ("Received Chain", pChain);
+
+    pChain = SSL_get0_verified_chain (pSSL);
+    LogChain ("Verified Chain", pChain);
+
+    return ret;
+}
 
 int LogSSLInfos (SSL *pSSL)
 {
@@ -934,11 +1016,11 @@ int LogSSLInfos (SSL *pSSL)
 
     pStr = SSL_get_cipher_version (pSSL);
     if (pStr)
-       printf ("TLS Version: [%s]\n", pStr);
+        printf ("TLS Version: [%s]\n", pStr);
 
     pStr = SSL_get_cipher (pSSL);
     if (pStr)
-        printf ("TLS Cipher: [%s]\n", pStr);
+        printf ("TLS Cipher : [%s]\n", pStr);
 
     ret = SSL_get_peer_tmp_key (pSSL, &pKey);
 
@@ -946,7 +1028,7 @@ int LogSSLInfos (SSL *pSSL)
         ret = SSL_get_tmp_key (pSSL, &pKey);
 
     if (pKey)
-        LogKeyInfos ("Session Key", pKey, NULL);
+        LogKeyInfos ("Session Key", pKey, NULL, g_DumpPEM ? true : false);
 
     pCert = SSL_get1_peer_certificate (pSSL);
 
@@ -955,8 +1037,8 @@ int LogSSLInfos (SSL *pSSL)
         goto Done;
     }
 
-    LogKeyInfos ("Certificate", NULL, pCert);
-    LogCertInfos ("Leaf Certificate", pCert);
+    LogKeyInfos  ("Certificate", NULL, pCert, g_DumpPEM > 1 ? true : false);
+    LogCertInfos ("Leaf Certificate", pCert, g_DumpPEM ? true : false);
 
     printf ("\n");
 
@@ -977,6 +1059,27 @@ Done:
     return ret;
 }
 
+
+static int VerifyCallback (int wPreverify, X509_STORE_CTX *pStoreCtx)
+{
+    X509 *pCert = X509_STORE_CTX_get_current_cert (pStoreCtx);
+
+    if (NULL == pCert)
+    {
+        printf ("Verify got no certificate\n");
+        goto Done;
+    }
+
+    LogCertInfos ("Verify", pCert, (g_DumpPEM > 1) ? true : false);
+
+    wPreverify = 1;
+
+Done:
+
+    return wPreverify;
+ }
+
+
 #endif
 
 
@@ -994,6 +1097,7 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszAttachmenFilePath,
                      const char *pszAttachmentName,
                      bool bUseTLS,
+                     bool bVerify, 
                      bool bECDSA,
                      bool bUTF8)
 {
@@ -1138,6 +1242,12 @@ int SendSmtpMessage (const char *pszHostname,
 #else
         if (bECDSA)
             SSL_set1_sigalgs_list (g_pSSL, "ECDSA+SHA256");
+
+        if (bVerify)
+        {
+            SSL_set_verify (g_pSSL, SSL_VERIFY_PEER, VerifyCallback);
+        }
+
 #endif
 
         SSL_set_bio (g_pSSL, g_pBio, g_pBio);
@@ -1156,6 +1266,7 @@ int SendSmtpMessage (const char *pszHostname,
         printf ("Handshake Done\n\n");
 
         LogSSLInfos (g_pSSL);
+        LogChainInfos (g_pSSL);
 
         snprintf (g_szBuffer, sizeof (g_szBuffer), "EHLO %s%s", pszHostname, CRLF);
         SendBuffer (g_szBuffer);
@@ -1521,6 +1632,7 @@ int main (int argc, const char *argv[])
     const char *pszAttachmenName     = NULL;
 
     bool bUseTLS = true;
+    bool bVerify = false;
     bool bECDSA  = false;
     bool bUTF8   = true;
 
@@ -1555,9 +1667,19 @@ int main (int argc, const char *argv[])
             bECDSA = true;
         }
 
+        else if (0 == strcasecmp (argv[consumed], "-verify"))
+        {
+            bVerify = true;
+        }
+
         else if (0 == strcasecmp (argv[consumed], "-v"))
         {
             g_Verbose++;
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-pem"))
+        {
+            g_DumpPEM++;
         }
 
         else if (0 == strcasecmp (argv[consumed], "-host"))
@@ -1810,6 +1932,7 @@ int main (int argc, const char *argv[])
                           pszAttachmenFilePath,
                           pszAttachmenName,
                           bUseTLS,
+                          bVerify,
                           bECDSA,
                           bUTF8);
 
