@@ -49,7 +49,7 @@ $(PROGRAM): $(PROGRAM).o
 	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS) -o bin/$(PROGRAM)
 
 $(PROGRAM).o: $(PROGRAM).cpp
-	$(CC)  $(CFLAGS) $(PROGRAM).cpp -DLINUX -DUNIX
+	$(CC)  $(CFLAGS) $(PROGRAM).cpp -DLINUX -DUNIX $(SSL_INCLUDE_PATH)
 
 clean:
 	rm -f bin/$(PROGRAM) *.o

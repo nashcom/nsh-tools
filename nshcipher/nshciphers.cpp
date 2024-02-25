@@ -47,6 +47,7 @@
 #define NSHCIPHER_OPTION_ENABLE_TLS13 0x0001
 
 #define NSHCIPHERS_VERSION "1.0.1"
+#define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #define MAX_BUFFER_SIZE 32000
 
@@ -1409,6 +1410,15 @@ void sig_handler (int signum)
 #endif
 
 
+void PrintVersion()
+{
+    fprintf (stderr, "\nNash!Com Cipher Test Tool %s\n", NSHCIPHERS_VERSION);
+    fprintf (stderr, "%s\n", COPYRIGHT);
+    fprintf (stderr, "%s\n", OpenSSL_version(OPENSSL_VERSION));
+    fprintf (stderr, "(Build on: %s)\n", OPENSSL_VERSION_TEXT);
+}
+
+
 int main(int argc, char *argv[])
 {
     int  ret      = 0;
@@ -1461,7 +1471,7 @@ int main(int argc, char *argv[])
 
             else if (0 == strcasecmp (argv[consumed], "--version"))
             {
-                printf ("%s\n", NSHCIPHERS_VERSION);
+                PrintVersion();
                 return 0;
             }
 
