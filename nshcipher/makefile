@@ -6,7 +6,40 @@
 
 CC=g++
 CFLAGS= -g -Wall -c -fPIC -fpermissive -Wno-write-strings
-LIBS= -lcrypto -lssl
+
+# If OpenSSL statically linked is available compile and link statically with it
+ifneq (,$(wildcard ../../openssl/libssl.a))
+
+LIBS=../../openssl/libssl.a ../../openssl/libcrypto.a  -lresolv
+SSL_INCLUDE_PATH=-I../../openssl/include
+
+$(info )
+$(info Build with OpenSSL statically linked)
+$(info )
+
+# On MacOS if LibreSSL is available, statically with it
+else ifneq (,$(wildcard /opt/local/lib/libssl.a))
+
+LIBS=/opt/local/lib/libssl.a /opt/local/lib/libcrypto.a -lresolv
+SSL_INCLUDE_PATH=-I/opt/local/include
+
+$(info )
+$(info Build with LibreSSL statically linked)
+$(info )
+$(info Some TLS/SSL logging functionality is not available on LibreSSL.)
+$(info Consider using statically linked OpenSSL instead.)
+$(info )
+
+# Else just link dynamically with OpenSSL
+else
+
+LIBS= -lcrypto -lssl -lresolv
+
+$(info )
+$(info Build with OpenSSL dynamically linked)
+$(info )
+
+endif
 
 PROGRAM=nshciphers
 
