@@ -45,6 +45,8 @@
 #include <openssl/ossl_typ.h>
 
 #define NSHCIPHER_OPTION_ENABLE_TLS13 0x0001
+#define NSHCIPHER_OPTION_USE_EDCSA    0x0002
+
 
 #define NSHCIPHERS_VERSION "1.0.1"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
@@ -364,6 +366,30 @@ Done:
 }
 
 
+int Create_ECDSA_Key (const char *pszCurveName, EVP_PKEY **ppKey)
+{
+    int ret = 0;
+
+    if (NULL == pszCurveName)
+        *ppKey = EVP_EC_gen("P-256");
+    else
+        *ppKey = EVP_EC_gen(pszCurveName);
+
+    if (NULL == *ppKey)
+    {
+        LogError ("Cannot create ECDSA Key");
+        goto Done;
+    }
+
+    ret = 1;
+    printf ("\nCreated private ECDSA key!\n");
+
+Done:
+
+    return ret;
+}
+
+
 int GenerateSerialNumber (ASN1_INTEGER *pAsnInteger)
 {
     #define NSH_SERIAL_RAND_BITS 127
@@ -635,6 +661,100 @@ Done:
     return ret;
 }
 
+
+int SSLClientHelloCallback (SSL *pSSL, int *pAlert, void *pArg)
+{
+    int    ret  = 0;
+    size_t len  = 0;
+    size_t i    = 0;
+    size_t CipherListSize = 0;
+    size_t ExtensionCount = 0;
+
+    const unsigned char *pExtension  = NULL;
+    const unsigned char *pCipherList = NULL;
+    int *pExtensions = NULL;
+
+    printf ("--- Client Hello Callback ---\n");
+
+    if (NULL == pSSL)
+        return SSL_CLIENT_HELLO_ERROR;
+
+    if (SSL_client_hello_isv2 (pSSL))
+        printf ("Client Hello is V2\n");
+
+    ret = SSL_client_hello_get1_extensions_present (pSSL, &pExtensions, &ExtensionCount);
+
+    if (1 == ret)
+    {
+        printf ("Extensions(%lu): ", ExtensionCount);
+    }
+
+    for (i=0; i < ExtensionCount; i++)
+    {
+        ret = SSL_client_hello_get0_ext (pSSL, *(pExtensions+i), &pExtension, &len);
+
+        if (1 == ret)
+        {
+            printf ("%u ", *(pExtensions+i));
+        }
+    }
+    printf ("\n");
+
+    if (pExtensions)
+    {
+        OPENSSL_free (pExtensions);
+        pExtensions = NULL;
+    }
+
+    CipherListSize = SSL_client_hello_get0_ciphers (pSSL, &pCipherList);
+
+    if (0 == CipherListSize)
+    {
+        printf ("Client provided no cipher list\n");
+    }
+    if (NULL == pCipherList)
+    {
+        printf ("Client provided NULL cipher list\n");
+    }
+    else
+    {
+        printf ("Client Cipher List(%ld): ", CipherListSize);
+        for (size_t i=0; i<CipherListSize; i++)
+        {
+            if (1 == (i % 2))
+                printf ("%02X ", *(pCipherList+i));
+            else
+                printf ("%02X", *(pCipherList+i));
+        }
+
+        printf ("\n");
+    }
+
+    printf ("\n");
+
+    return SSL_CLIENT_HELLO_SUCCESS;
+}
+
+
+int SSLServerNameCallback (SSL *pSSL, int *pAlert, void *pArg)
+{
+    const char *pszServerName  = NULL;
+
+    printf ("--- Server Name Callback ---\n");
+
+    pszServerName = SSL_get_servername (pSSL, TLSEXT_NAMETYPE_host_name);
+
+    if (NULL == pszServerName)
+        printf ("No hostname requested by client\n");
+    else
+        printf ("Client requested hostname: [%s]\n", pszServerName);
+
+    printf ("\n");
+
+    return SSL_TLSEXT_ERR_OK;
+
+}
+
 int ServerCheck (const char *pszHost,
                  const char *pszPort,
                  const char *pszPemCert,
@@ -693,6 +813,9 @@ int ServerCheck (const char *pszHost,
         goto Done;
     }
 
+    SSL_CTX_set_client_hello_cb (pCtx, SSLClientHelloCallback, NULL);
+    SSL_CTX_set_tlsext_servername_callback (pCtx, SSLServerNameCallback);
+
     if (Options & NSHCIPHER_OPTION_ENABLE_TLS13)
     {
         /* Keep TLS V1.3 enabled */
@@ -716,22 +839,23 @@ int ServerCheck (const char *pszHost,
     {
         /* No private key specified, create one on the fly */
 
-        ret = Create_RSA_Key (4096, &pKey);
+        if (Options & NSHCIPHER_OPTION_USE_EDCSA)
+            ret = Create_ECDSA_Key ("P-256", &pKey);
+        else
+            ret = Create_RSA_Key (4096, &pKey);
 
         if ( (NULL == pKey) || (ret != 1) )
         {
            LogError ("No private key created");
            goto Done;
         }
-        else
-        {
-            ret = SSL_CTX_use_PrivateKey (pCtx, pKey);
 
-            if (1 != ret)
-            {
-                LogError ("Cannot read private key");
-                goto Done;
-            }
+        ret = SSL_CTX_use_PrivateKey (pCtx, pKey);
+
+        if (1 != ret)
+        {
+            LogError ("Cannot read private key");
+            goto Done;
         }
     }
 
@@ -1557,6 +1681,12 @@ int main(int argc, char *argv[])
             {
                 Options |= NSHCIPHER_OPTION_ENABLE_TLS13;
             }
+
+            else if (0 == strcasecmp (argv[consumed], "-ec"))
+            {
+                Options |= NSHCIPHER_OPTION_USE_EDCSA;
+            }
+
 
             else if (0 == strcasecmp (argv[consumed], "-s"))
             {
