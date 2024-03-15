@@ -264,6 +264,7 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-att <filepath>        Attachment to send (specify '-' for attaching stdin to a file)\n");
     fprintf (stderr, "-attname <filename>    File name for file to attach\n");
     fprintf (stderr, "-mailer <name>         Mailer Name\n");
+    fprintf (stderr, "-cipher <cipher list>  OpenSSL cipher list string (colon separated) used for a connection\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
     fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
     fprintf (stderr, "-pem                   Dump pem data with cert/key info (specify twice for PEM of certificate chain)\n");
