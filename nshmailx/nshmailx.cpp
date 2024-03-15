@@ -2,7 +2,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.5 08.01.2024                                                #
+# Version 0.9.7 15.03.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -59,9 +59,17 @@ Dump key and certificate information via OpenSSL code
 - Dump received and verified chain with verbose output
 - New -pem option to dump certificate/key PEM data
 
+0.9.7 09.03.2024
+
+- Print OpenSSL Error
+
+0.9.8 15.03.2024
+
+- Add support for specifying a OpenSSL cipher string
+
 */
 
-#define VERSION "0.9.6"
+#define VERSION "0.9.8"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -178,6 +186,8 @@ void LogError (const char *pszErrorText, const char *pszParam)
         fprintf (stderr, "Error: %s: %s\n\n", pszErrorText, pszParam);
     else
         fprintf (stderr, "Error: %s\n\n", pszErrorText);
+
+    ERR_print_errors_fp (stderr);
 }
 
 void LogError (const char *pszErrorText)
@@ -1096,6 +1106,7 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszBodyFile,
                      const char *pszAttachmenFilePath,
                      const char *pszAttachmentName,
+                     const char *pszCipherList,
                      bool bUseTLS,
                      bool bVerify, 
                      bool bECDSA,
@@ -1226,6 +1237,11 @@ int SendSmtpMessage (const char *pszHostname,
             goto Quit;
         }
 
+        if (pszCipherList && *pszCipherList)
+        {
+            SSL_CTX_set_cipher_list (g_pCtxSSL, pszCipherList);
+        }
+
         g_pSSL = SSL_new (g_pCtxSSL);
 
         if (NULL == g_pSSL)
@@ -1247,7 +1263,6 @@ int SendSmtpMessage (const char *pszHostname,
         {
             SSL_set_verify (g_pSSL, SSL_VERIFY_PEER, VerifyCallback);
         }
-
 #endif
 
         SSL_set_bio (g_pSSL, g_pBio, g_pBio);
@@ -1630,6 +1645,7 @@ int main (int argc, const char *argv[])
     const char *pszSmtpServerAddress = NULL;
     const char *pszAttachmenFilePath = NULL;
     const char *pszAttachmenName     = NULL;
+    const char *pszCipherList        = NULL;
 
     bool bUseTLS = true;
     bool bVerify = false;
@@ -1834,6 +1850,18 @@ int main (int argc, const char *argv[])
             pszAttachmenName = argv[consumed];
         }
 
+        else if (0 == strcasecmp (argv[consumed], "-cipher"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            pszCipherList = argv[consumed];
+        }
+
         else if (0 == strcasecmp (argv[consumed], "--"))
         {
             /* Ignored parameter */
@@ -1931,6 +1959,7 @@ int main (int argc, const char *argv[])
                           pszBodyFile,
                           pszAttachmenFilePath,
                           pszAttachmenName,
+                          pszCipherList,
                           bUseTLS,
                           bVerify,
                           bECDSA,
