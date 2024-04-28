@@ -297,7 +297,7 @@ Done:
    return 0;
 }
 
-int WriteHttpHeader (BIO *pBio, int HttpStatus, char *pszHeader, int ContentLen)
+int WriteHttpHeader (BIO *pBio, int HttpStatus, const char *pszHeader, int ContentLen)
 {
     int ret = 0;
     char szFullHeader [4096] = {0};
@@ -449,7 +449,7 @@ int X509AddNameEntryText (X509_NAME *pX509Name, const char *pszName, const char 
     return ret;
 }
 
-int add_ext (X509 *pCert, int nid, char *value,  X509V3_CTX *pV3Ctx)
+int add_ext (X509 *pCert, int nid, const char *value,  X509V3_CTX *pV3Ctx)
 {
     X509_EXTENSION *pExt = NULL;
     int ret = 0;
@@ -488,9 +488,9 @@ Done:
 
 
 int CreateCertificate (EVP_PKEY *pKey,
-                       char *pszOrganization,
-                       char *pszCommonName,
-                       char *pszSAN,
+                       const char *pszOrganization,
+                       const char *pszCommonName,
+                       const char *pszSAN,
                        int ExpirationDays,
                        X509 **ppCert)
 {

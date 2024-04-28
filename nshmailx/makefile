@@ -3,7 +3,7 @@
 ############################################################################
 
 CC=gcc
-CFLAGS= -g -Wall -c -fPIC -pedantic
+CFLAGS=-g -Wall -c -fPIC -pedantic
 
 # If OpenSSL statically linked is available compile and link statically with it
 ifneq (,$(wildcard ../../openssl/libssl.a))
@@ -48,7 +48,7 @@ $(PROGRAM): $(PROGRAM).o
 	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS)
 
 $(PROGRAM).o: $(PROGRAM).cpp
-	$(CC)  $(CFLAGS) $(PROGRAM).cpp $(SSL_INCLUDE_PATH)
+	$(CC)  $(CFLAGS) $(PROGRAM).cpp $(SSL_INCLUDE_PATH) -O2
 
 install: all
 	sudo cp -f $(PROGRAM) /usr/bin/nshmailx

@@ -5,7 +5,7 @@
 
 
 CC=g++
-CFLAGS= -g -Wall -c -fPIC -fpermissive -Wno-write-strings
+CFLAGS=-g -Wall -c -fPIC -pedantic -O2
 
 # If OpenSSL statically linked is available compile and link statically with it
 ifneq (,$(wildcard ../../openssl/libssl.a))
@@ -46,19 +46,19 @@ PROGRAM=nshciphers
 all: $(PROGRAM)
 
 $(PROGRAM): $(PROGRAM).o
-	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS) -o bin/$(PROGRAM)
+	$(CC) $(PROGRAM).o $(LIBS) -o $(PROGRAM)
 
 $(PROGRAM).o: $(PROGRAM).cpp
 	$(CC)  $(CFLAGS) $(PROGRAM).cpp -DLINUX -DUNIX $(SSL_INCLUDE_PATH)
 
 clean:
-	rm -f bin/$(PROGRAM) *.o
+	rm -f $(PROGRAM) *.o
 
 test: all
-	bin/$(PROGRAM)
+	./$(PROGRAM)
 
 install: all
-	sudo cp bin/$(PROGRAM) /usr/bin/$(PROGRAM)
+	sudo cp $(PROGRAM) /usr/bin/$(PROGRAM)
 	$(MAKE) clean
 
 uninstall:
