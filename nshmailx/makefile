@@ -63,4 +63,7 @@ clean:
 test: all
 	./$(PROGRAM) --version
 
+publish: all
+	mkdir -p /local/software/nashcom.de/linux-bin
+	cp -f ./$(PROGRAM) /local/software/nashcom.de/linux-bin
 
