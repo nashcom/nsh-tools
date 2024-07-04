@@ -1,4 +1,3 @@
-
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
@@ -67,9 +66,13 @@ Dump key and certificate information via OpenSSL code
 
 - Add support for specifying a OpenSSL cipher string
 
+0.9.9 04.07.2024
+
+- New -trace option
+
 */
 
-#define VERSION "0.9.8"
+#define VERSION "0.9.9"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -109,6 +112,7 @@ char g_ProgramName[] = "nshmailx";
 char g_szBuffer[MAX_BUFFER_LEN+1] = {0};
 char g_szErrorBuffer[4096] = {0};
 int  g_Verbose = 0;
+int  g_Trace   = 0;
 int  g_DumpPEM = 0;
 
 void strdncpy (char *pszStr, const char *ct, size_t n)
@@ -267,6 +271,7 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-cipher <cipher list>  OpenSSL cipher list string (colon separated) used for a connection\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
     fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
+    fprintf (stderr, "-trace                 Show input and output with client/server tags)\n");
     fprintf (stderr, "-pem                   Dump pem data with cert/key info (specify twice for PEM of certificate chain)\n");
 
     fprintf (stderr, "\n");
@@ -406,6 +411,9 @@ int GetReturnCode()
     if (len <= 0)
         return 500;
 
+    if (g_Trace)
+        printf ("S:%s", g_szBuffer);
+
     while (*p)
     {
         if (*p <= 32)
@@ -450,6 +458,9 @@ int SendBuffer (const char *pszBuffer)
 
     if (NULL == pszBuffer)
         return 0;
+
+    if (g_Trace)
+        printf ("C:%s", pszBuffer);
 
     if (g_pSSL)
     {
@@ -1588,10 +1599,10 @@ int SendSmtpMessage (const char *pszHostname,
 
 Quit:
 
-    printf ("Quit.\n");
-
     snprintf (g_szBuffer, sizeof (g_szBuffer), "QUIT%s", CRLF);
     SendBuffer (g_szBuffer);
+
+    printf ("Quit.\n");
 
 Done:
 
@@ -1692,6 +1703,11 @@ int main (int argc, const char *argv[])
         else if (0 == strcasecmp (argv[consumed], "-v"))
         {
             g_Verbose++;
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-trace"))
+        {
+            g_Trace++;
         }
 
         else if (0 == strcasecmp (argv[consumed], "-pem"))
