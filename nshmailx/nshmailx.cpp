@@ -1,7 +1,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 0.9.7 15.03.2024                                                #
+# Version 1.0.0 20.07.2024                                                #
 # (C) Copyright Daniel Nashed/NashCom 2024                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -70,9 +70,13 @@ Dump key and certificate information via OpenSSL code
 
 - New -trace option
 
+1.0.0 20.07.2024
+
+- Change MX lookup code to work also on Alpine
+
 */
 
-#define VERSION "0.9.9"
+#define VERSION "1.0.0"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -539,12 +543,10 @@ size_t GetMxRecord (const char *pszDomain, size_t MaxBuffer, char *retpszBuffer,
     char   Result[1024]          = {0};
     int    Priority              = 0;
     int    LowestPriority        = 0;
-    struct __res_state ResState  = {0};
-    ns_msg nsMsg = {0};
-    ns_rr  rr    = {{0}};
+    int    ret                   = 0;
 
-    int  ret      = 0;
-    int  res_init = 0;
+    ns_msg nsMsg  = {0};
+    ns_rr  rr     = {{0}};
 
     size_t len    = 0;
     size_t count  = 0;
@@ -557,15 +559,13 @@ size_t GetMxRecord (const char *pszDomain, size_t MaxBuffer, char *retpszBuffer,
     if (retpPriority)
         *retpPriority = 0;
 
-    ret = res_ninit (&ResState);
+    ret = res_init ();
 
     if (ret)
     {
         LogError ("error initializing resolver");
         goto Done;
     }
-
-    res_init = 1;
 
     len = res_query (pszDomain, ns_c_in, ns_t_mx, Buffer, sizeof(Buffer)-1);
 
@@ -620,9 +620,6 @@ size_t GetMxRecord (const char *pszDomain, size_t MaxBuffer, char *retpszBuffer,
     } /* for */
 
 Done:
-
-    if (res_init)
-        res_nclose (&ResState);
 
     return found;
 }
