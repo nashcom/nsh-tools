@@ -79,6 +79,7 @@ Dump key and certificate information via OpenSSL code
 
 - Add configuration file (/etc/nshmailx.cfg)
 - Add -silent mode (only log errors)
+- Set default mailer to "nshmailx"
 
 */
 
@@ -132,7 +133,7 @@ bool g_bECDSA  = false;
 bool g_bUTF8   = true;
 bool g_bSilent = false;
 
-char g_szMailer[MAX_STR]            = {0};
+char g_szMailer[MAX_STR]            = "nshmailx";
 char g_szFrom[MAX_STR]              = {0};
 char g_szFromName[MAX_STR]          = {0};
 char g_szHostname[MAX_STR]          = {0};
