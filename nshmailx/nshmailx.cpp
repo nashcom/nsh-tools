@@ -101,6 +101,7 @@ Dump key and certificate information via OpenSSL code
 #endif
 
 #define MAX_BUFFER_LEN 65535
+#define MAX_STR        1024
 
 #define CRLF "\r\n"
 #define CR   "\r"
@@ -118,6 +119,19 @@ char g_szErrorBuffer[4096] = {0};
 int  g_Verbose = 0;
 int  g_Trace   = 0;
 int  g_DumpPEM = 0;
+
+bool g_bUseTLS = true;
+bool g_bVerify = false;
+bool g_bECDSA  = false;
+bool g_bUTF8   = true;
+
+char g_szMailer[MAX_STR]            = {0};
+char g_szFrom[MAX_STR]              = {0};
+char g_szFromName[MAX_STR]          = {0};
+char g_szHostname[MAX_STR]          = {0};
+char g_szSmtpServerAddress[MAX_STR] = {0};
+char g_szCipherList[MAX_STR]        = {0};
+
 
 void strdncpy (char *pszStr, const char *ct, size_t n)
 {
@@ -1168,7 +1182,7 @@ int SendSmtpMessage (const char *pszHostname,
     }
 
     /* Get SMTP server from first mail address */
-    if (NULL == pszSmtpServerAddress)
+    if (IsNullStr (pszSmtpServerAddress))
     {
         if (pszSendTo)
             pszDomain = strchr (pszSendTo, '@');
@@ -1194,7 +1208,7 @@ int SendSmtpMessage (const char *pszHostname,
         }
     }
 
-    if (NULL == pszSmtpServerAddress)
+    if (IsNullStr (pszSmtpServerAddress))
     {
         LogError ("No SMTP server specified");
         goto Done;
@@ -1503,7 +1517,7 @@ int SendSmtpMessage (const char *pszHostname,
         snprintf (g_szBuffer, sizeof (g_szBuffer), "Content-Type: application/octet-stream%s", CRLF);
         SendBuffer (g_szBuffer);
 
-        if (NULL == pszAttachmentName)
+        if (IsNullStr (pszAttachmentName))
         {
             if (0 == strcmp (pszAttachmenFilePath, "-"))
             {
@@ -1635,26 +1649,185 @@ Done:
 }
 
 
+int GetParam (const char *pszParamName, const char *pszName, const char *pszValue, int BufferSize, char *retpszBuffer)
+{
+    if (IsNullStr (pszName))
+        return 0;
+
+    if (NULL == pszValue)
+        return 0;
+
+    if (NULL == retpszBuffer)
+        return 0;
+
+    if (0 == BufferSize)
+        return 0;
+
+    if (strcmp (pszParamName, pszName))
+        return 0;
+
+    strdncpy (retpszBuffer, pszValue, BufferSize);
+    return 1;
+}
+
+
+int FileExists (const char *pszFilename)
+{
+    int ret = 0;
+    struct stat Filestat = {0};
+
+    if (IsNullStr (pszFilename))
+        return 0;
+
+    ret = stat (pszFilename, &Filestat);
+
+    if (ret)
+        return 0;
+
+    if (S_IFDIR & Filestat.st_mode)
+        return 2;
+    else
+        return 1;
+}
+
+
+int ReadConfig (const char *pszConfigFile)
+{
+    int  ret = 0;
+    FILE *fp = NULL;
+    char *p  = NULL;
+    char *pszValue = NULL;
+    char szBuffer[4096] = {0};
+    char szNum[20] = {0};
+
+    if (IsNullStr (pszConfigFile))
+    {
+        fprintf (stderr, "No configuration file specified\n");
+        ret = -1;
+        goto Done;
+    }
+
+    if (0 == FileExists (pszConfigFile))
+    {
+        fprintf (stderr, "Info: No configuration profile found: %s\n", pszConfigFile);
+    }
+
+    fp = fopen (pszConfigFile, "r");
+
+    if (NULL == fp)
+    {
+        fprintf (stderr, "Cannot open configuration file: %s\n", pszConfigFile);
+        ret= -1;
+        goto Done;
+    }
+
+    while ( fgets (szBuffer, sizeof (szBuffer)-1, fp) )
+    {
+        /* Parse for '=' to get value */
+        p = szBuffer;
+        pszValue = NULL;
+        while (*p)
+        {
+            if ('=' == *p)
+            {
+                if (NULL == pszValue)
+                {
+                    *p = '\0';
+                    pszValue = p+1;
+                }
+            }
+            else if (*p < 32)
+            {
+               *p = '\0';
+                break;
+            }
+
+            p++;
+        }
+
+        if (!*szBuffer)
+            continue;
+
+        if ('#' == *szBuffer)
+            continue;
+
+        if (NULL == pszValue)
+        {
+            fprintf (stdout, "Warning - Invalid parameter: [%s]\n", szBuffer);
+            ret++;
+            continue;
+        }
+
+             if ( GetParam ("from",          szBuffer, pszValue, sizeof (g_szFrom),              g_szFrom));
+        else if ( GetParam ("fromname",      szBuffer, pszValue, sizeof (g_szFromName),          g_szFromName));
+        else if ( GetParam ("mailer",        szBuffer, pszValue, sizeof (g_szMailer),            g_szMailer));
+        else if ( GetParam ("hostname",      szBuffer, pszValue, sizeof (g_szHostname),          g_szHostname));
+        else if ( GetParam ("serveraddress", szBuffer, pszValue, sizeof (g_szSmtpServerAddress), g_szSmtpServerAddress));
+        else if ( GetParam ("cipherlist",    szBuffer, pszValue, sizeof (g_szCipherList),        g_szCipherList));
+
+        else if ( GetParam ("tls", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bUseTLS = atoi (szNum) ? true : false;
+        }
+
+        else if ( GetParam ("verify", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bVerify = atoi (szNum) ? true : false;
+        }
+
+        else if ( GetParam ("ecdsa", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bECDSA = atoi (szNum) ? true : false;
+        }
+
+        else if ( GetParam ("utf8", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bUTF8 = atoi (szNum) ? true : false;
+        }
+
+        else
+        {
+             fprintf (stdout, "Warning - Invalid configuration parameter: [%s]\n", szBuffer);
+             ret++;
+        }
+
+    } /* while */
+
+Done:
+
+    if (fp)
+    {
+        fclose (fp);
+        fp = NULL;
+    }
+
+    return ret;
+}
+
+
+
 int main (int argc, const char *argv[])
 {
     int rc  = 0;
     int ret = 1;
     int consumed = 1;
 
-    const char *pszFrom              = NULL;
     const char *pszSendTo            = NULL;
     const char *pszCopyTo            = NULL;
     const char *pszBlindCopyTo       = NULL;
     const char *pszSubject           = NULL;
     const char *pszBody              = NULL;
-    const char *pszMailer            = NULL;
-    const char *pszFromName          = NULL;
-    const char *pszHostname          = NULL;
     const char *pszBodyFile          = NULL;
-    const char *pszSmtpServerAddress = NULL;
     const char *pszAttachmenFilePath = NULL;
     const char *pszAttachmenName     = NULL;
-    const char *pszCipherList        = NULL;
+
+    /* Set defaults from config overwritten by command line parameters */
+    const char *pszFrom              = g_szFrom;
+    const char *pszMailer            = g_szMailer;
+    const char *pszFromName          = g_szFromName;
+    const char *pszHostname          = g_szHostname;
+    const char *pszSmtpServerAddress = g_szSmtpServerAddress;
+    const char *pszCipherList        = g_szCipherList;
 
     bool bUseTLS = true;
     bool bVerify = false;
@@ -1662,6 +1835,18 @@ int main (int argc, const char *argv[])
     bool bUTF8   = true;
 
     size_t FileSize = 0;
+
+    /* Read optional config file if present */
+    char szConfigFile[] = "/etc/nshmailx.cfg";
+
+    ret = ReadConfig (szConfigFile);
+
+    /* Set defaults from config overwritten by command line parameters */
+
+    bUseTLS = g_bUseTLS;
+    bVerify = g_bVerify;
+    bECDSA  = g_bECDSA;
+    bUTF8   = g_bUTF8;
 
     while (argc > consumed)
     {
