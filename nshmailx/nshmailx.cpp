@@ -74,9 +74,15 @@ Dump key and certificate information via OpenSSL code
 
 - Change MX lookup code to work also on Alpine
 
+
+1.0.1 31.07.2024
+
+- Add configuration file (/etc/nshmailx.cfg)
+- Add -silent mode (only log errors)
+
 */
 
-#define VERSION "1.0.0"
+#define VERSION "1.0.1"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -124,6 +130,7 @@ bool g_bUseTLS = true;
 bool g_bVerify = false;
 bool g_bECDSA  = false;
 bool g_bUTF8   = true;
+bool g_bSilent = false;
 
 char g_szMailer[MAX_STR]            = {0};
 char g_szFrom[MAX_STR]              = {0};
@@ -289,6 +296,7 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-cipher <cipher list>  OpenSSL cipher list string (colon separated) used for a connection\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
     fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
+    fprintf (stderr, "-silent                Only log errors to stderr\n");
     fprintf (stderr, "-trace                 Show input and output with client/server tags)\n");
     fprintf (stderr, "-pem                   Dump pem data with cert/key info (specify twice for PEM of certificate chain)\n");
 
@@ -410,7 +418,7 @@ size_t RecvBuffer()
     else
         *(g_szBuffer+readbytes) = '\0';
 
-    if (g_Verbose)
+    if (g_Verbose > 1)
         printf ("%s", g_szBuffer);
 
     return readbytes;
@@ -1198,8 +1206,10 @@ int SendSmtpMessage (const char *pszHostname,
 
             if (CountMX)
             {
-                printf ("SMTP Server: [%s] (MX: %d)\n", szMX, PriorityMX);
                 pszSmtpServerAddress = szMX;
+
+                if (!g_bSilent)
+                    printf ("SMTP Server: [%s] (MX: %d)\n", szMX, PriorityMX);
             }
         }
         else
@@ -1214,7 +1224,9 @@ int SendSmtpMessage (const char *pszHostname,
         goto Done;
     }
 
-    printf ("Connecting to server ... %s\n", pszSmtpServerAddress);
+    if (!g_bSilent)
+        printf ("Connecting to server ... %s\n", pszSmtpServerAddress);
+
     snprintf (szConnect, sizeof (szConnect),  "%s:25", pszSmtpServerAddress);
 
     g_pBio = BIO_new_connect (szConnect);
@@ -1231,7 +1243,8 @@ int SendSmtpMessage (const char *pszHostname,
         goto Done;
     }
 
-    printf ("Connection established\n");
+    if (!g_bSilent)
+        printf ("Connection established\n");
 
     if((rc = GetReturnCode()))
         goto Quit;
@@ -1250,7 +1263,8 @@ int SendSmtpMessage (const char *pszHostname,
         if((rc = GetReturnCode()))
             goto Quit;
 
-        printf ("Starting TLS session ...\n");
+        if (!g_bSilent)
+            printf ("Starting TLS session ...\n");
 
         g_pCtxSSL = SSL_CTX_new (TLS_client_method());
 
@@ -1292,7 +1306,8 @@ int SendSmtpMessage (const char *pszHostname,
 
         CipherCount = CheckCiphers ();
 
-        printf ("Ciphers: %d\n", CipherCount);
+        if (!g_bSilent)
+            printf ("Ciphers: %d\n", CipherCount);
 
         if (1 != SSL_connect (g_pSSL))
         {
@@ -1301,10 +1316,14 @@ int SendSmtpMessage (const char *pszHostname,
             goto Quit;
         }
 
-        printf ("Handshake Done\n\n");
+        if (!g_bSilent)
+            printf ("Handshake Done\n\n");
 
-        LogSSLInfos (g_pSSL);
-        LogChainInfos (g_pSSL);
+        if (g_Verbose)
+        {
+            LogSSLInfos (g_pSSL);
+            LogChainInfos (g_pSSL);
+        }
 
         snprintf (g_szBuffer, sizeof (g_szBuffer), "EHLO %s%s", pszHostname, CRLF);
         SendBuffer (g_szBuffer);
@@ -1550,7 +1569,7 @@ int SendSmtpMessage (const char *pszHostname,
         pBioMem = BIO_new (BIO_s_mem());
         if (NULL == pBioMem)
         {
-            printf ("Cannot create memory BIO\n");
+            LogError ("Cannot create memory BIO\n");
             goto Done;
         }
 
@@ -1558,7 +1577,7 @@ int SendSmtpMessage (const char *pszHostname,
 
         if (NULL == pBioB64)
         {
-            printf ("Cannot create Base64 BIO\n");
+            LogError ("Cannot create Base64 BIO\n");
             goto Done;
         }
 
@@ -1575,7 +1594,7 @@ int SendSmtpMessage (const char *pszHostname,
 
         if (NULL == pBioFile)
         {
-            printf ("Cannot read file: %s\n", pszAttachmenFilePath);
+           LogError ("Cannot read file: %s\n", pszAttachmenFilePath);
             goto Done;
         }
 
@@ -1613,11 +1632,13 @@ Quit:
     snprintf (g_szBuffer, sizeof (g_szBuffer), "QUIT%s", CRLF);
     SendBuffer (g_szBuffer);
 
-    printf ("Quit.\n");
+    if (!g_bSilent)
+        printf ("Quit.\n");
 
 Done:
 
-    printf ("Done.\n");
+    if (!g_bSilent)
+        printf ("Done.\n");
 
     if (pBioMem)
     {
@@ -1643,7 +1664,8 @@ Done:
         g_pCtxSSL = NULL;
     }
 
-    printf ("Cleanup Done.\n");
+    if (!g_bSilent)
+        printf ("Cleanup Done.\n");
 
     return rc;
 }
@@ -1785,6 +1807,11 @@ int ReadConfig (const char *pszConfigFile)
             g_bUTF8 = atoi (szNum) ? true : false;
         }
 
+        else if ( GetParam ("silent", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bSilent = atoi (szNum) ? true : false;
+        }
+
         else
         {
              fprintf (stdout, "Warning - Invalid configuration parameter: [%s]\n", szBuffer);
@@ -1880,6 +1907,16 @@ int main (int argc, const char *argv[])
         else if (0 == strcasecmp (argv[consumed], "-verify"))
         {
             bVerify = true;
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-silent"))
+        {
+            g_bSilent = true;
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-nosilent"))
+        {
+            g_bSilent = false;
         }
 
         else if (0 == strcasecmp (argv[consumed], "-v"))
