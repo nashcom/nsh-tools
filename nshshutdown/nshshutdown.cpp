@@ -65,16 +65,16 @@ BOOL ServiceCommand(const char* pszService, DWORD Operation, DWORD dwWaitSeconds
 BOOL ChangeCurrentServiceConfig(const char* pszService, DWORD dwPreshutdownTimeout);
 BOOL DumpFile(const char *pszFilename);
 BOOL ClearLog();
-
+DWORD StartServices(DWORD dwSeconds);
 
 size_t ReadConfig();
 size_t ReadShutdownServiceNames(const char* pszServiceName, const char* pszFilename);
 size_t ShutdownCheckServices(DWORD dwOperation, DWORD dwSeconds, BOOL bVerbose);
-
+size_t StartShutdownRegisteredServices(DWORD dwSeconds);
 
 void PrintHeader(const char *pszMessage)
 {
-    size_t len = 0; 
+    size_t len = 0;
     char  szDashes[MAX_ERROR_TEXT+1] = {0};
 
     if (NULL == pszMessage)
@@ -131,14 +131,16 @@ void PrintHelp()
     printf ("\n%s V%s - %s\n%s\n\n", g_szServiceName, g_szVersion, g_szServiceDisplayName, g_szServiceDescription);
 
     printf ("status       Prints status of services and configuration\n");
-    printf ("reboot       Initiates server reboot\n");
-    printf ("shutdown     Initiates server shutdown\n");
-    printf ("peshutdown   Invokes pre-shutdown operations manually\n");
-    printf ("install      Installs program as a service\n");
-    printf ("uninstall    Installs program service\n");
     printf ("start        Starts this service\n");
     printf ("stop         Stops this service\n");
     printf ("restart      Restarts this service\n");
+    printf ("install      Installs program as a service\n");
+    printf ("uninstall    Installs program service\n");
+    printf ("peshutdown   Invokes pre-shutdown operations manually\n");
+    printf ("startall     Start all pre-shutdown configured services\n");
+    printf ("reboot       Initiates server reboot\n");
+    printf ("shutdown     Initiates server shutdown\n");
+    printf ("\n");
     printf ("cfg          Opens configuration in notepad\n");
     printf ("log          Dump log file\n");
     printf ("clear        Clear logfile\n");
@@ -284,6 +286,13 @@ int main(int argc, char *argv[])
             WaitForServiceToStop (NULL, dwGraceTime);
         }
 
+        else if (strcmp(argv[1], "startall") == 0)
+        {
+            g_bInteractiveMode = TRUE;
+
+            StartServices(60);
+        }
+
         else if (strcmp(argv[1], "status") == 0)
         {
             g_bInteractiveMode = TRUE;
@@ -297,7 +306,8 @@ int main(int argc, char *argv[])
 
         else
         {
-            printf("Invalid argument. Use 'install', 'uninstall', or 'start'.\n");
+            printf("Invalid argument: %s - Try 'help' command\n", argv[1]);
+            return 1;
         }
     }
     else
@@ -321,18 +331,31 @@ int main(int argc, char *argv[])
 }
 
 
+
+DWORD StartServices(DWORD dwSeconds)
+{
+    DWORD dwServiceCount    = 0;
+    DWORD dwServicesRunning = 0;
+
+    dwServiceCount    = ReadShutdownServiceNames(NULL, g_szConfigFile);
+    dwServicesRunning = StartShutdownRegisteredServices (dwSeconds);
+
+    return dwServicesRunning;
+}
+
 BOOL WaitForServiceToStop (const char *pszServiceName, DWORD dwTimeoutSeconds)
 {
     DWORD dwSeconds = 0;
     DWORD dwServicesRunning = 0;
+    DWORD dwServiceCount    = 0;
     char szMessage[MAX_ERROR_TEXT+1] = {0};
 
-    dwServicesRunning = ReadShutdownServiceNames(pszServiceName, g_szConfigFile);
+    dwServiceCount = ReadShutdownServiceNames(pszServiceName, g_szConfigFile);
 
-    snprintf(szMessage, sizeofstring(szMessage), "Services registered for shutdown: %u", dwServicesRunning);
+    snprintf(szMessage, sizeofstring(szMessage), "Services registered for shutdown: %u", dwServiceCount);
     LogMessage(szMessage);
 
-    if (0 == dwServicesRunning)
+    if (0 == dwServiceCount)
     {
         LogMessage("No pre-shutdown registered service is running");
         return TRUE;
@@ -716,7 +739,7 @@ BOOL SetPrivilege(LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
     }
 
     // Lookup the LUID for the privilege
-    if (!LookupPrivilegeValue(nullptr, lpszPrivilege, &luid)) 
+    if (!LookupPrivilegeValue(nullptr, lpszPrivilege, &luid))
     {
         PrintWindowsError ("Cannot lookup privilege value");
         CloseHandle(hToken);
@@ -729,7 +752,7 @@ BOOL SetPrivilege(LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
     tp.Privileges[0].Attributes = (bEnablePrivilege) ? SE_PRIVILEGE_ENABLED : 0;
 
     // Adjust the token's privileges
-    if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr)) 
+    if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), nullptr, nullptr))
     {
         PrintWindowsError ("Cannot AdjustTokenPrivileges");
         CloseHandle(hToken);
@@ -1363,6 +1386,7 @@ size_t ShutdownCheckServices(DWORD dwOperation, DWORD dwSeconds, BOOL bVerbose)
     size_t idx            = 0;
     BOOL   bSuccess       = FALSE;
     DWORD  dwServiceState = 0;
+    char   szMessage[MAX_ERROR_TEXT+1] = {0};
 
     memset (&g_dwShutdownServiceStatus, sizeof(g_dwShutdownServiceStatus), 0);
 
@@ -1376,7 +1400,6 @@ size_t ShutdownCheckServices(DWORD dwOperation, DWORD dwSeconds, BOOL bVerbose)
 
             if ((SERVICE_STOPPED == dwServiceState) && (dwSeconds))
             {
-                char szMessage[MAX_ERROR_TEXT+1] = {0};
                 snprintf(szMessage, sizeofstring(szMessage), "Services shutdown [%s] after %u seconds", g_szShutdownServiceNames[idx], dwSeconds);
                 LogMessage(szMessage);
             }
@@ -1387,7 +1410,28 @@ size_t ShutdownCheckServices(DWORD dwOperation, DWORD dwSeconds, BOOL bVerbose)
 
         if (SERVICE_STOPPED != dwServiceState)
             count++;
+    }
+
+    return count;
 }
+
+
+size_t StartShutdownRegisteredServices(DWORD dwSeconds)
+{
+    size_t count          = 0;
+    size_t idx            = 0;
+    BOOL   bSuccess       = FALSE;
+    DWORD  dwServiceState = 0;
+
+    memset (&g_dwShutdownServiceStatus, sizeof(g_dwShutdownServiceStatus), 0);
+
+    for (idx=0; idx < g_CountShutdownServiceNames; idx++)
+    {
+        bSuccess = ServiceCommand(g_szShutdownServiceNames[idx], SERVICE_OPERATION_START, dwSeconds, &dwServiceState);
+
+        if (SERVICE_RUNNING == dwServiceState)
+            count++;
+    }
 
     return count;
 }

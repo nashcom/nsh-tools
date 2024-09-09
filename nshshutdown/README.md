@@ -47,20 +47,29 @@ nshshutdown.exe cfg
 
 ```
 
-nshshutdown 0.9.0 - NashCom Shutdown Helper
+nshshutdown V0.9.0 - NashCom Shutdown Helper
 Shutdown helper for cleanly shutting down services when Windows is shutdown or rebooted
 
-status       Prints status of services
-reboot       Initiates server reboot
-shutdown     Initiates server shutdown
-peshutdown   Invokes pre-shutdown operations manually
+status       Prints status of services and configuration
+start        Starts this service
+stop         Stops this service
+restart      Restarts this service
 install      Installs program as a service
 uninstall    Installs program service
-start        Starts this service
-stops        Stops this service
-restart      Restarts this service
+peshutdown   Invokes pre-shutdown operations manually
+startall     Start all pre-shutdown configured services
+reboot       Initiates server reboot
+shutdown     Initiates server shutdown
 
-Specify Windows service name to pre-shutdown in service configuration file
+cfg          Opens configuration in notepad
+log          Dump log file
+clear        Clear logfile
+
+Specify Windows service name to pre-shutdown in config file section [Services]
+
+
+nshshutdown - Configuration
+---------------------------
 
 Config file  : C:\Windows\nshshutdown.cfg
 Log file     : C:\nshshutdown-service.log
