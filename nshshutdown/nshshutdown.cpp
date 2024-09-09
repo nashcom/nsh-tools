@@ -376,7 +376,7 @@ BOOL WaitForServiceToStop (const char *pszServiceName, DWORD dwTimeoutSeconds)
         return TRUE;
     }
 
-    snprintf(szMessage, sizeofstring(szMessage), "Waiting for %u seconds to stop %u services", dwTimeoutSeconds, dwServicesRunning);
+    snprintf(szMessage, sizeofstring(szMessage), "Waiting for %u seconds to stop %u service%s", dwTimeoutSeconds, dwServicesRunning, 1 == dwServicesRunning ? "" : "s");
     LogMessage(szMessage);
 
     while (dwSeconds < dwTimeoutSeconds)
@@ -388,13 +388,13 @@ BOOL WaitForServiceToStop (const char *pszServiceName, DWORD dwTimeoutSeconds)
 
         if (0 == dwServicesRunning)
         {
-            LogMessage("All pe-shutdown registered Services shutdown");
+            LogMessage("All pre-shutdown registered services shutdown");
             return TRUE;
         }
 
         if (0 == (dwSeconds %10))
         {
-            snprintf(szMessage, sizeofstring(szMessage), "Waited for %u seconds (Services still running: %u)", dwSeconds, dwServicesRunning);
+            snprintf(szMessage, sizeofstring(szMessage), "Waited for %u seconds (services still running: %u)", dwSeconds, dwServicesRunning);
             LogMessage(szMessage);
 
             if (g_bPreShutdownPending)
