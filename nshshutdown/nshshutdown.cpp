@@ -21,7 +21,7 @@ SERVICE_STATUS g_ServiceStatus = {0};
 SERVICE_STATUS_HANDLE g_StatusHandle = nullptr;
 HANDLE g_ServiceStopEvent = nullptr;
 
-char g_szVersion[] = "0.9.0";
+char g_szVersion[] = "0.9.1";
 char g_szServiceName[]         = "nshshutdown";
 char g_szServiceDisplayName[]  = "NashCom Shutdown Helper";
 char g_szServiceDirectory[]    = "C:";
@@ -131,6 +131,7 @@ void PrintHelp()
     printf ("\n%s V%s - %s\n%s\n\n", g_szServiceName, g_szVersion, g_szServiceDisplayName, g_szServiceDescription);
 
     printf ("status       Prints status of services and configuration\n");
+    printf ("version      Prints version and exits\n");
     printf ("start        Starts this service\n");
     printf ("stop         Stops this service\n");
     printf ("restart      Restarts this service\n");
@@ -302,6 +303,12 @@ int main(int argc, char *argv[])
         else if ((strcmp(argv[1], "help") == 0) || (strcmp(argv[1], "-?") == 0))
         {
             PrintHelp();
+        }
+
+        else if ((strcmp(argv[1], "version") == 0) || (strcmp(argv[1], "-version") == 0))
+        {
+            printf ("%s\n", g_szVersion);
+            return 0;
         }
 
         else

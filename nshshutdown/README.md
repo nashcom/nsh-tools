@@ -47,10 +47,11 @@ nshshutdown.exe cfg
 
 ```
 
-nshshutdown V0.9.0 - NashCom Shutdown Helper
+nshshutdown V0.9.1 - NashCom Shutdown Helper
 Shutdown helper for cleanly shutting down services when Windows is shutdown or rebooted
 
 status       Prints status of services and configuration
+version      Prints version and exits
 start        Starts this service
 stop         Stops this service
 restart      Restarts this service
@@ -74,6 +75,7 @@ nshshutdown - Configuration
 Config file  : C:\Windows\nshshutdown.cfg
 Log file     : C:\nshshutdown-service.log
 Timeout(sec) : 600
+
 ```
 
 ## Example configuration for HCL Domino
