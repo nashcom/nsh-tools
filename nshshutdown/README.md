@@ -67,6 +67,16 @@ Log file     : C:\nshshutdown-service.log
 Timeout(sec) : 600
 ```
 
+## Example configuration for HCL Domino
+
+Specify the Domino Server service with it's service name.
+The name might differ depending on the version you have initially installed the service and the data path of the server.
+
+```
+[Services]
+HCLDominoServer(enotesdata)
+```
+
 
 ## Implementation details
 

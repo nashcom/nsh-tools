@@ -110,8 +110,10 @@ void CheckStatus()
         printf ("[%s] service is not installed\n", g_szServiceName);
     else if (SERVICE_STOPPED == dwServiceState)
         printf ("[%s] service is stopped\n", g_szServiceName);
-    else
+    else if (SERVICE_RUNNING == dwServiceState)
         printf ("[%s] service is running\n", g_szServiceName);
+    else
+        printf ("[%s] service is unknown\n", g_szServiceName);
 
     printf ("\n");
 
@@ -728,20 +730,20 @@ BOOL SetPrivilege(LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
 
 BOOL ServiceCommand(const char* pszService, DWORD dwOperation, DWORD dwWaitSeconds, DWORD *retpdwServiceStatus)
 {
-    DWORD                       dwBufSize = 0;
-    DWORD                       dwBufNeed = 0;
-    SC_HANDLE                   hSCM = NULL;
-    SC_HANDLE                   hService = NULL;
-    bool                        bResult = FALSE;
-    DWORD                       dwDesiredState = 0;
-    BOOL                        bServiceRunning = FALSE;
-    BOOL                        bStatus = FALSE;
+    DWORD dwBufSize       = 0;
+    DWORD dwBufNeed       = 0;
+    DWORD dwDesiredState  = 0;
+    BOOL  bResult         = FALSE;
+    BOOL  bServiceRunning = FALSE;
+    BOOL  bStatus         = FALSE;
+    char  szStatus[1024]  = {0};
 
-    SERVICE_STATUS_PROCESS      ServiceStatusProcess = { 0 };
-    LPQUERY_SERVICE_CONFIGA     pServiceConfig = NULL;
-    LPSERVICE_STATUS_PROCESS    pServiceStatus = NULL;
+    SC_HANDLE hSCM      = NULL;
+    SC_HANDLE hService  = NULL;
 
-    char szStatus[1024] = {0};
+    SERVICE_STATUS_PROCESS   ServiceStatusProcess = { 0 };
+    LPQUERY_SERVICE_CONFIGA  pServiceConfig = NULL;
+    LPSERVICE_STATUS_PROCESS pServiceStatus = NULL;
 
     if (retpdwServiceStatus)
         *retpdwServiceStatus = 0;
@@ -808,6 +810,8 @@ BOOL ServiceCommand(const char* pszService, DWORD dwOperation, DWORD dwWaitSecon
     /* Check for service status */
     if (SERVICE_OPERATION_STATUS == dwOperation)
     {
+        bStatus = TRUE;
+
         switch (pServiceStatus->dwCurrentState)
         {
         case SERVICE_STOPPED:
@@ -917,18 +921,21 @@ BOOL ServiceCommand(const char* pszService, DWORD dwOperation, DWORD dwWaitSecon
 
 WaitForStatus:
 
-    bStatus = FALSE;
-
     /* Don't wait for status if no interval specified */
     if (0 == dwWaitSeconds)
+    {
+        bStatus = TRUE;
         goto Done;
+    }
+
+    bStatus = FALSE;
 
     while (dwDesiredState != pServiceStatus->dwCurrentState)
     {
         if (dwWaitSeconds <= 0)
         {
             PrintWindowsError ("Shutdown wait time reached -- Can't wait any more");
-            break;
+            goto Done;
         }
 
         Sleep(1000);
