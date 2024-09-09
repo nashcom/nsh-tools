@@ -63,6 +63,9 @@ BOOL WaitForServiceToStop (const char *pszServiceName, DWORD dwTimeoutSeconds);
 BOOL SetPrivilege(LPCTSTR lpszPrivilege, BOOL bEnablePrivilege);
 BOOL ServiceCommand(const char* pszService, DWORD Operation, DWORD dwWaitSeconds, DWORD *retpdwServiceStatus);
 BOOL ChangeCurrentServiceConfig(const char* pszService, DWORD dwPreshutdownTimeout);
+BOOL DumpFile(const char *pszFilename);
+BOOL ClearLog();
+
 
 size_t ReadConfig();
 size_t ReadShutdownServiceNames(const char* pszServiceName, const char* pszFilename);
@@ -77,7 +80,7 @@ void PrintHeader(const char *pszMessage)
     if (NULL == pszMessage)
         return;
 
-    printf ("%s\n", pszMessage);
+    printf ("\n%s\n", pszMessage);
 
     len = MIN (strlen (pszMessage), MAX_ERROR_TEXT);
 
@@ -137,6 +140,9 @@ void PrintHelp()
     printf ("stop         Stops this service\n");
     printf ("restart      Restarts this service\n");
     printf ("cfg          Opens configuration in notepad\n");
+    printf ("log          Dump log file\n");
+    printf ("clear        Clear logfile\n");
+
     printf ("\n");
     printf ("Specify Windows service name to pre-shutdown in config file section %s\n", g_ServicesSectionTag);
     printf ("\n");
@@ -178,6 +184,16 @@ int main(int argc, char *argv[])
         else if (strcmp(argv[1], "cfg") == 0)
         {
             NotepadConfigFile();
+        }
+
+        else if (strcmp(argv[1], "log") == 0)
+        {
+            DumpFile(g_szLogFilename);
+        }
+
+        else if (strcmp(argv[1], "clear") == 0)
+        {
+            ClearLog();
         }
 
         else if (strcmp(argv[1], "uninstall") == 0)
@@ -593,7 +609,6 @@ void StartService()
 
 void LogMessage(const char* pszMessage)
 {
-    static int count = 0;
     time_t timer     = {0};
     FILE*  fp = NULL;
     struct tm* pTmInfo = NULL;
@@ -608,10 +623,7 @@ void LogMessage(const char* pszMessage)
         return;
     }
 
-    if (0 == count)
-        fp = fopen(g_szLogFilename, "w");
-    else
-        fp = fopen(g_szLogFilename, "a");
+    fp = fopen(g_szLogFilename, "a");
 
     if (NULL == fp)
     {
@@ -1053,6 +1065,27 @@ Done:
 }
 
 
+BOOL ClearLog()
+{
+    FILE*  fp = NULL;
+
+    fp = fopen(g_szLogFilename, "r");
+
+    if (NULL == fp)
+    {
+        return FALSE;
+    }
+
+    fclose(fp);
+    fp = NULL;
+
+    remove (g_szLogFilename);
+
+    LogMessage ("Log file cleared");
+
+    return TRUE;
+}
+
 void WriteDefaultConfigFile()
 {
     FILE*  fp = NULL;
@@ -1083,6 +1116,42 @@ Done:
         fclose(fp);
         fp = NULL;
     }
+}
+
+BOOL DumpFile(const char *pszFilename)
+{
+    char   szBuffer[4096] = {0};
+
+    FILE*  fp  = NULL;
+    size_t len = 0;
+
+    if (IsNullStr(pszFilename))
+        return FALSE;
+
+    PrintHeader(pszFilename);
+
+    fp = fopen(pszFilename, "r");
+
+    if (NULL == fp)
+    {
+        printf ("\nLog File not found: %s\n\n", pszFilename);
+        return FALSE;
+    }
+
+    while (fgets(szBuffer, sizeofstring(szBuffer), fp))
+    {
+        printf ("%s", szBuffer);
+    } // while
+
+Done:
+
+    if (fp)
+    {
+        fclose(fp);
+        fp = NULL;
+    }
+
+    return TRUE;
 }
 
 
