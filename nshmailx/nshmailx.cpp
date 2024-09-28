@@ -34,7 +34,7 @@ Change History
 
 0.9.1 04.01.2024
 
-Add from phrase support (e.g. "John Doe" <jd@acme.com)
+Add from phrase support (e.g. "John Doe" <jd@acme.com>)
 
 0.9.2 05.01.2024
 
@@ -81,9 +81,13 @@ Dump key and certificate information via OpenSSL code
 - Add -silent mode (only log errors)
 - Set default mailer to "nshmailx"
 
+1.0.2 28.09.2024
+
+- Add handshake debugging
+
 */
 
-#define VERSION "1.0.1"
+#define VERSION "1.0.2"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -502,13 +506,18 @@ int SendBuffer (const char *pszBuffer)
 }
 
 
-int CheckCiphers()
+int CheckLocalAvailableCiphers()
 {
     const char *pStr = NULL;
     int priority = 0;
 
     if (NULL == g_pSSL)
         return 0;
+
+    if (g_Verbose > 1)
+    {
+        printf ("\nLocal available ciphers offered\n-------------------------------\n");
+    }
 
     while (priority < 1000)
     {
@@ -520,6 +529,11 @@ int CheckCiphers()
             printf ("%s\n", pStr);
 
         priority++;
+    }
+
+    if (g_Verbose > 1)
+    {
+        printf ("\n");
     }
 
     return priority;
@@ -1122,6 +1136,60 @@ Done:
  }
 
 
+void ssl_info_callback (const SSL *pSSL, int where, int ret)
+{
+    const char *pszStr       = NULL;
+    const char *pszAlertType = NULL;
+    const char *pszAlertDesc = NULL;
+    const char *pszStateStr  = NULL;
+    const char szEmpty[]     = "";
+
+    int w = where & ~SSL_ST_MASK;
+
+    if (w & SSL_ST_CONNECT)
+        pszStr = "SSL_connect";
+
+    else if (w & SSL_ST_ACCEPT)
+        pszStr = "SSL_accept";
+
+    else
+        pszStr = "undefined";
+
+    if (where & SSL_CB_LOOP)
+    {
+        printf("%s: %s\n", pszStr, SSL_state_string_long (pSSL));
+    }
+    else if (where & SSL_CB_ALERT)
+    {
+        pszStr = (where & SSL_CB_READ) ? "read" : "write";
+
+        pszAlertType = SSL_alert_type_string_long (ret);
+        pszAlertDesc = SSL_alert_desc_string_long (ret);
+
+        if (NULL == pszAlertType)
+            pszAlertType = szEmpty;
+
+        if (NULL == pszAlertDesc)
+            pszAlertDesc = szEmpty;
+
+        printf("SSL3 alert %s: %s: %s\n", pszStr, pszAlertType, pszAlertDesc);
+    }
+    else if (where & SSL_CB_EXIT)
+    {
+
+        pszStateStr = SSL_state_string_long (pSSL);
+
+        if (NULL == pszStateStr)
+            pszStateStr = szEmpty;
+
+        if (ret == 0)
+            printf("%s: failed in %s\n", pszStr, pszStateStr);
+
+        else if (ret < 0)
+            printf("%s: error in %s\n", pszStr, pszStateStr);
+    }
+}
+
 #endif
 
 
@@ -1301,11 +1369,17 @@ int SendSmtpMessage (const char *pszHostname,
         {
             SSL_set_verify (g_pSSL, SSL_VERIFY_PEER, VerifyCallback);
         }
+
+        if (g_Verbose > 1)
+        {
+            SSL_CTX_set_info_callback (g_pCtxSSL, ssl_info_callback);
+        }
+
 #endif
 
         SSL_set_bio (g_pSSL, g_pBio, g_pBio);
 
-        CipherCount = CheckCiphers ();
+        CipherCount = CheckLocalAvailableCiphers();
 
         if (!g_bSilent)
             printf ("Ciphers: %d\n", CipherCount);
