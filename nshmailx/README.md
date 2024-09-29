@@ -73,6 +73,17 @@ In this example the output of tar is packed into a file and named "notesdata.taz
 tar -cz /local/notesdata/*.ntf | ./nshmailx -to nsh@acme.com -from nsh@acme.com -subject "Notes Templates" -att - -attname notesdata.taz
 ```
 
+### Fail2Ban sendmail command
+
+Out of the box Fail2Ban uses sendmail. This command uses nshmailx to send mail instead.
+Configuration file: `/etc/fail2ban/action.d/sendmail-common.conf`.
+
+
+```
+mailcmd = /usr/bin/nshmailx -from "<sender>" -to "<dest>" -file - -subject "Fail2Ban Report"
+```
+
+
 ## Compile this application
 
 This application is mainly intended for Linux and provides a Linux makefile.  
