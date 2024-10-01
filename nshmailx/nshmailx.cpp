@@ -85,9 +85,13 @@ Dump key and certificate information via OpenSSL code
 
 - Add handshake debugging
 
+1.0.4 01.10.2024
+
+- Add -NoTLS13 option
+
 */
 
-#define VERSION "1.0.2"
+#define VERSION "1.0.3"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -131,11 +135,12 @@ int  g_Verbose = 0;
 int  g_Trace   = 0;
 int  g_DumpPEM = 0;
 
-bool g_bUseTLS = true;
-bool g_bVerify = false;
-bool g_bECDSA  = false;
-bool g_bUTF8   = true;
-bool g_bSilent = false;
+bool g_bUseTLS  = true;
+bool g_bNoTLS13 = false;
+bool g_bVerify  = false;
+bool g_bECDSA   = false;
+bool g_bUTF8    = true;
+bool g_bSilent  = false;
 
 char g_szMailer[MAX_STR]            = "nshmailx";
 char g_szFrom[MAX_STR]              = {0};
@@ -300,6 +305,7 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-mailer <name>         Mailer Name\n");
     fprintf (stderr, "-cipher <cipher list>  OpenSSL cipher list string (colon separated) used for a connection\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
+    fprintf (stderr, "-NoTLS13               Disable TLS 1.3\n");
     fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
     fprintf (stderr, "-silent                Only log errors to stderr\n");
     fprintf (stderr, "-trace                 Show input and output with client/server tags)\n");
@@ -1208,7 +1214,8 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszAttachmentName,
                      const char *pszCipherList,
                      bool bUseTLS,
-                     bool bVerify, 
+                     bool bNoTLS13,
+                     bool bVerify,
                      bool bECDSA,
                      bool bUTF8)
 {
@@ -1341,6 +1348,11 @@ int SendSmtpMessage (const char *pszHostname,
         {
             LogError ("Cannot create SSL context");
             goto Quit;
+        }
+
+        if (bNoTLS13)
+        {
+            SSL_CTX_set_options (g_pCtxSSL, SSL_OP_NO_TLSv1_3);
         }
 
         if (pszCipherList && *pszCipherList)
@@ -1867,6 +1879,11 @@ int ReadConfig (const char *pszConfigFile)
             g_bUseTLS = atoi (szNum) ? true : false;
         }
 
+        else if ( GetParam ("notls13", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_bNoTLS13 = atoi (szNum) ? true : false;
+        }
+
         else if ( GetParam ("verify", szBuffer, pszValue, sizeof (szNum), szNum))
         {
             g_bVerify = atoi (szNum) ? true : false;
@@ -1931,10 +1948,11 @@ int main (int argc, const char *argv[])
     const char *pszSmtpServerAddress = g_szSmtpServerAddress;
     const char *pszCipherList        = g_szCipherList;
 
-    bool bUseTLS = true;
-    bool bVerify = false;
-    bool bECDSA  = false;
-    bool bUTF8   = true;
+    bool bUseTLS  = true;
+    bool bNoTLS13 = false;
+    bool bVerify  = false;
+    bool bECDSA   = false;
+    bool bUTF8    = true;
 
     size_t FileSize = 0;
 
@@ -1945,10 +1963,11 @@ int main (int argc, const char *argv[])
 
     /* Set defaults from config overwritten by command line parameters */
 
-    bUseTLS = g_bUseTLS;
-    bVerify = g_bVerify;
-    bECDSA  = g_bECDSA;
-    bUTF8   = g_bUTF8;
+    bUseTLS  = g_bUseTLS;
+    bNoTLS13 = g_bNoTLS13;
+    bVerify  = g_bVerify;
+    bECDSA   = g_bECDSA;
+    bUTF8    = g_bUTF8;
 
     while (argc > consumed)
     {
@@ -1972,6 +1991,11 @@ int main (int argc, const char *argv[])
         else if (0 == strcasecmp (argv[consumed], "-notls"))
         {
             bUseTLS = false;
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-notls13"))
+        {
+            bNoTLS13 = true;
         }
 
         else if (0 == strcasecmp (argv[consumed], "-ec"))
@@ -2272,6 +2296,7 @@ int main (int argc, const char *argv[])
                           pszAttachmenName,
                           pszCipherList,
                           bUseTLS,
+                          bNoTLS13,
                           bVerify,
                           bECDSA,
                           bUTF8);
