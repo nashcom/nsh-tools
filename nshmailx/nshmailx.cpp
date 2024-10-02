@@ -52,7 +52,6 @@ More mailx compatibility and basic -cc and -bcc support
 
 Dump key and certificate information via OpenSSL code
 
-
 0.9.6 20.02.2024
 
 - Dump received and verified chain with verbose output
@@ -89,9 +88,13 @@ Dump key and certificate information via OpenSSL code
 
 - Add -NoTLS13 option
 
+1.0.5 02.10.2024
+
+- Dump TLS/SSL version and correct cipher information
+
 */
 
-#define VERSION "1.0.3"
+#define VERSION "1.0.5"
 #define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
@@ -695,14 +698,19 @@ int LogSSLInfos (SSL *pSSL)
     if (NULL == pSSL)
         goto Done;
 
+    pStr = SSL_get_version (pSSL);
+    if (pStr)
+        printf("TLS version: %s\n", pStr);
+
     /* For some reason LibreSSL does always return TLSv1/SSLv3. But the connection is still a TLS V1.2 connection */
     pStr = SSL_get_cipher_version (pSSL);
     if (pStr)
-       printf ("TLS Version: [%s]\n", pStr);
+       printf ("TLS Cipher Version: [%s]\n", pStr);
 
     pStr = SSL_get_cipher (pSSL);
     if (pStr)
-        printf ("TLS Cipher: [%s]\n", pStr);
+        printf ("TLS Cipher Version: [%s]\n", pStr);
+
 
 Done:
     return 0;
