@@ -1,6 +1,6 @@
 
 /*
-    Copyright Nash!Com, Daniel Nashed 2023 - APACHE 2.0 see LICENSE
+    Copyright Nash!Com, Daniel Nashed 2023-2024 - APACHE 2.0 see LICENSE
     Author: Daniel Nashed (Nash!Com)
     Licensed to the Apache Software Foundation (ASF) under one
     or more contributor license agreements.  See the NOTICE file
@@ -1180,6 +1180,7 @@ Done:
 
 
 int ConnectionCheck (const char *pszHost,
+                     const char *pszHostSNI,
                      const char *pszPort,
                            char *pszCipherList,
                      const char *pszSignAlgs,
@@ -1277,9 +1278,14 @@ int ConnectionCheck (const char *pszHost,
             }
         }
 
-
+        /* Connection host name */
         BIO_set_conn_hostname (pBio, szConnect);
-        SSL_set_tlsext_host_name (pSSL, pszHost); /* SNI */
+
+	/* SNI */
+	if (pszHostSNI)
+            SSL_set_tlsext_host_name (pSSL, pszHostSNI);
+	else
+            SSL_set_tlsext_host_name (pSSL, pszHost);
 
         ret = SSL_do_handshake (pSSL);
 
@@ -1370,8 +1376,14 @@ int ConnectionCheck (const char *pszHost,
             // goto Done;
         }
 
+	/* Connected host */
         BIO_set_conn_hostname (pBio, szConnect);
-        SSL_set_tlsext_host_name (pSSL, pszHost); /* SNI */
+
+        /* SNI */
+        if (pszHostSNI)
+            SSL_set_tlsext_host_name (pSSL, pszHostSNI);
+        else
+            SSL_set_tlsext_host_name (pSSL, pszHost);
 
         ret = SSL_do_handshake (pSSL);
 
@@ -1438,6 +1450,7 @@ void help (const char *pszProgram)
     printf ("(Build on: %s)\n\n", OPENSSL_VERSION_TEXT);
 
     printf ("Syntax: %s <hostname> [Options]\n\n", pszProgram);
+    printf ("-sni      <SNI name> Specify a different SNI name than connecting host name\n");
     printf ("-port     <port number to listen/connect to>\n");
     printf ("-cert     <PEM cert file>\n");
     printf ("-key      <PEM key file>\n");
@@ -1552,6 +1565,7 @@ int main(int argc, char *argv[])
 
     char szSignAlgs[20] = {0};
     char *pszHost       = NULL;
+    char *pszHostSNI    = NULL;
     char *pszPort       = NULL;
     char *pszCipherList = NULL;
     char *pszCert       = NULL;
@@ -1627,6 +1641,18 @@ int main(int argc, char *argv[])
                     goto InvalidSyntax;
 
                 pszCipherList = argv[consumed];
+            }
+
+            else if (0 == strcasecmp (argv[consumed], "-sni"))
+            {
+                consumed++;
+                if (consumed >= argc)
+                    goto InvalidSyntax;
+
+                if (argv[consumed][0] == '-')
+                    goto InvalidSyntax;
+
+                pszHostSNI = argv[consumed];
             }
 
             else if (0 == strcasecmp (argv[consumed], "-port"))
@@ -1740,7 +1766,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        ret = ConnectionCheck (pszHost, pszPort, pszCipherList, szSignAlgs, Options);
+        ret = ConnectionCheck (pszHost, pszHostSNI, pszPort, pszCipherList, szSignAlgs, Options);
     }
 
 Done:
@@ -1755,3 +1781,4 @@ InvalidSyntax:
 
     return ret;
 }
+
