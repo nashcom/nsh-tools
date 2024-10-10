@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #-------------------------------------------------------------------------------
-#  Copyright Nash!Com, Daniel Nashed 2023 - APACHE 2.0 see LICENSE
+#  Copyright Nash!Com, Daniel Nashed 2023-2024 - APACHE 2.0 see LICENSE
 #
 #  JWT Create/Verify application to test and understand JWTs
 #
@@ -18,7 +18,11 @@
 SCRIPT_NAME=$0
 SCRIPT_DIR=$(dirname $SCRIPT_NAME)
 
-NSHJWT_SCRIPT_VERSION=1.0.0
+CHAIN_FILE=chain.pem
+PUBKEY_FILE=pubkey.pem
+
+NSHJWT_SCRIPT_VERSION=1.0.1
+
 
 LogError()
 {
@@ -273,6 +277,59 @@ DecodeJWT()
 }
 
 
+process_certs()
+{
+  local LINE=
+
+  echo > $CHAIN_FILE
+
+  while read LINE; do
+    echo "-----BEGIN CERTIFICATE-----" >> $CHAIN_FILE
+    echo "$LINE" >> $CHAIN_FILE
+    echo "-----END CERTIFICATE-----" >> $CHAIN_FILE
+  done
+}
+
+get_pubkey()
+{
+  local LINE=
+
+  echo > $PUBKEY_FILE
+
+  read LINE;
+
+  if [ -z "$LINE" ]; then
+    return 0
+  fi
+
+  echo "$LINE" | base64 -d | openssl x509 -pubkey -inform DER > $PUBKEY_FILE
+}
+
+
+GetPubKeyFromJWT()
+{
+  local ENCODED_FILE=$1
+
+  local PAD_COUNT=
+  local PAYLOAD_BASE64URL=
+  local HEADER_BASE64=
+
+  FileCheck "$ENCODED_FILE" "encoded content"
+
+  HEADER_BASE64=$(cut -d"." -f1 "$ENCODED_FILE" | tr '_-' '/+')
+
+  # Add padding for valid BASE64 encoding (base64url encoding removes padding)
+  PAD_COUNT=$(expr 4 - ${#HEADER_BASE64} % 4)
+
+  if [ "$PAD_COUNT" != "4" ]; then
+    while ((PAD_COUNT--)); do HEADER_BASE64=$HEADER_BASE64=; done
+  fi
+
+  echo $HEADER_BASE64 | openssl base64 -d -A | jq -r .x5c[] | process_certs
+  echo $HEADER_BASE64 | openssl base64 -d -A | jq -r .x5c[0] | get_pubkey
+}
+
+
 VerifyJWT()
 {
   local ENCODED_FILE=$1
@@ -368,6 +425,7 @@ Usage()
   echo  "-privkey=<private.pem>  Specifies private key for signing"
   echo  "-in=<in-file>           Input file"
   echo  "-out=<out-file>         Output file"
+  echo  "-getpubkey              Get Pub key from 'x5c' (X.509 certificate chain) in JWT header (See RFC7515)"
   echo  "-demo                   Create a demo file, sign it, verify it and decode it"
   echo
   echo  "-ed                     Use Ed25519 key"
@@ -419,6 +477,10 @@ for a in "$@"; do
 
     -verify)
       VERIFY=yes
+      ;;
+
+    -getpubkey)
+      GETPUBKEY=yes
       ;;
 
     -createkey)
@@ -486,15 +548,20 @@ if [ "$ENCODE" = "yes" ]; then
     VerifyJWT "$OUTPUT_FILE"
   fi
 
-  elif [ "$DECODE" = "yes" ]; then
+elif [ "$DECODE" = "yes" ]; then
 
   if [ "$VERIFY" = "yes" ]; then
     VerifyJWT "$INPUT_FILE"
   fi
 
+  if [ "$GETPUBKEY" = "yes" ]; then
+    GetPubKeyFromJWT "$INPUT_FILE"
+  fi
+  
   DecodeJWT "$INPUT_FILE" "$OUTPUT_FILE"
 
 elif [ "$VERIFY" = "yes" ]; then
   VerifyJWT "$INPUT_FILE"
 fi
+
 
