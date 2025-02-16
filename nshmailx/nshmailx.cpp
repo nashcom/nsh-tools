@@ -2257,7 +2257,7 @@ int main (int argc, const char *argv[])
                 goto Done;
             }
 
-            if (FileSize > 50 * 1024 * 1024)
+            if (FileSize > 1024 * 1024 * 1024) /* Max 1 GB */
             {
                 LogError ("Attachment too large to send", pszAttachmenFilePath);
                 goto Done;
