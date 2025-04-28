@@ -160,7 +160,10 @@ void strdncpy (char *pszStr, const char *ct, size_t n)
 
     if (n>0)
     {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wstringop-truncation"
         strncpy (pszStr, ct, n-1);
+        #pragma GCC diagnostic pop
         pszStr[n-1] = '\0';
     }
 }
