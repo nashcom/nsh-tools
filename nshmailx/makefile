@@ -2,13 +2,13 @@
 # Copyright Nash!Com, Daniel Nashed 2024 - APACHE 2.0 see LICENSE
 ############################################################################
 
-CC=gcc
+CC=g++
 CFLAGS=-g -Wall -c -fPIC -pedantic
 
 # If OpenSSL statically linked is available compile and link statically with it
 ifneq (,$(wildcard ../../openssl/libssl.a))
 
-LIBS=../../openssl/libssl.a ../../openssl/libcrypto.a  -lresolv
+LIBS=../../openssl/libssl.a ../../openssl/libcrypto.a -lresolv
 SSL_INCLUDE_PATH=-I../../openssl/include
 
 $(info )
@@ -31,7 +31,7 @@ $(info )
 # Else just link dynamically with OpenSSL
 else
 
-LIBS= -lcrypto -lssl -lresolv
+LIBS= -lssl -lcrypto -lresolv
 
 $(info )
 $(info Build with OpenSSL dynamically linked)
@@ -41,11 +41,12 @@ endif
 
 
 PROGRAM=nshmailx
+TARGET?=$(PROGRAM)
 
-all: $(PROGRAM)
+all: $(TARGET)
 
-$(PROGRAM): $(PROGRAM).o
-	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS)
+$(TARGET): $(PROGRAM).o
+	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS) $(SPECIAL_LINK_OPTIONS)
 
 $(PROGRAM).o: $(PROGRAM).cpp
 	$(CC)  $(CFLAGS) $(PROGRAM).cpp $(SSL_INCLUDE_PATH) -O2
@@ -58,12 +59,15 @@ mailx: install
 	sudo ln -s -f /usr/bin/nshmailx /usr/bin/mail
 
 clean:
-	rm -f $(PROGRAM) *.o
+	rm -f $(TARGET) *.o
 
 test: all
-	./$(PROGRAM) --version
+	./$(TARGET) --version
 
 publish: all
 	mkdir -p /local/software/nashcom.de/linux-bin
-	cp -f ./$(PROGRAM) /local/software/nashcom.de/linux-bin
+	cp -f ./$(TARGET) /local/software/nashcom.de/linux-bin
+
+container_build:
+	docker run --rm -v .:/src -w /src -u 0 nashcom/alpine_build_env:latest sh -c 'SPECIAL_LINK_OPTIONS=-static make'
 

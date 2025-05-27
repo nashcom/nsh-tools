@@ -92,10 +92,15 @@ Dump key and certificate information via OpenSSL code
 
 - Dump TLS/SSL version and correct cipher information
 
+1.0.6 27.05.2025
+
+- Add bsd-mail option -a
+- Makefile changes and Alpine build support
+
 */
 
-#define VERSION "1.0.5"
-#define COPYRIGHT "Copyright 2024, Nash!Com, Daniel Nashed"
+#define VERSION "1.0.6"
+#define COPYRIGHT "Copyright 2024-2025, Nash!Com, Daniel Nashed"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -2172,7 +2177,8 @@ int main (int argc, const char *argv[])
             pszBodyFile = argv[consumed];
         }
 
-        else if (0 == strcasecmp (argv[consumed], "-att"))
+        else if ((0 == strcasecmp (argv[consumed], "-att")) ||
+                 (0 == strcasecmp (argv[consumed], "-a")) )
         {
             consumed++;
             if (consumed >= argc)
@@ -2328,3 +2334,4 @@ InvalidSyntax:
 
     return ret;
 }
+
