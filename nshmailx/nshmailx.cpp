@@ -97,10 +97,21 @@ Dump key and certificate information via OpenSSL code
 - Add bsd-mail option -a
 - Makefile changes and Alpine build support
 
+1.0.7 01.06.2025
+
+- Add allowed recipients settings cfg and documentation
+
 */
 
-#define VERSION "1.0.6"
+
+
+#define VERSION "1.0.7"
 #define COPYRIGHT "Copyright 2024-2025, Nash!Com, Daniel Nashed"
+
+/* C++ includes */
+#include <regex>
+#include <string>
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,6 +148,7 @@ SSL     *g_pSSL    = NULL;
 SSL_CTX *g_pCtxSSL = NULL;
 
 char g_ProgramName[] = "nshmailx";
+char g_szConfigFile[] = "/etc/nshmailx.cfg";
 char g_szBuffer[MAX_BUFFER_LEN+1] = {0};
 char g_szErrorBuffer[4096] = {0};
 int  g_Verbose = 0;
@@ -156,6 +168,7 @@ char g_szFromName[MAX_STR]          = {0};
 char g_szHostname[MAX_STR]          = {0};
 char g_szSmtpServerAddress[MAX_STR] = {0};
 char g_szCipherList[MAX_STR]        = {0};
+char g_szAllowedRecptsRegx[MAX_STR] = {0};
 
 
 void strdncpy (char *pszStr, const char *ct, size_t n)
@@ -325,6 +338,22 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "\n");
     fprintf (stderr, "Note: Also supports Linux BSD mailx command line sending options\n");
     fprintf (stderr, "\n");
+    fprintf (stderr, "Configuration file: %s\n", g_szConfigFile);
+    fprintf (stderr, "\n");
+    fprintf (stderr, "from=<addr>            Standard from address\n");
+    fprintf (stderr, "fromname=<addr>        Standard from name\n");
+    fprintf (stderr, "mailer=<str>           Mail agent\n");
+    fprintf (stderr, "hostname=<std>         Override default hostname\n");
+    fprintf (stderr, "serveraddress=<addr>   Set server address/relay host\n");
+    fprintf (stderr, "cipherlist=<list>      OpenSSL cipher list string (colon separated) used for a connection\n");
+    fprintf (stderr, "rcptallowed=<regex>    Regex expression to define allowed recipients\n");
+    fprintf (stderr, "tls=0|1                Use TLS (enabled by default, can be disabled via tls=0\n");
+    fprintf (stderr, "notls13=0|1            Disable TLS 1.3\n");
+    fprintf (stderr, "verify=0|1             Verify certificate chain\n");
+    fprintf (stderr, "ecdsa=0|1              Use ECDSA instead of RSA\n");
+    fprintf (stderr, "utf8=0|1               Use UTF8\n");
+    fprintf (stderr, "silent=0|1             Run silent. Only log errors to stderr\n");
+    fprintf (stderr, "\n");
 }
 
 
@@ -337,6 +366,35 @@ bool IsNullStr (const char *pszStr)
         return 1;
 
     return 0;
+}
+
+
+bool RecipientAllowed (const char *pszRecipient)
+{
+    if (IsNullStr (pszRecipient))
+        return true; /* To avoid extra checks for empty recipients */
+
+    if (IsNullStr (g_szAllowedRecptsRegx))
+        return true;
+
+    try
+    {
+
+        std::string recipient = pszRecipient;
+        std::regex  pattern (g_szAllowedRecptsRegx);
+
+        if (std::regex_match (recipient, pattern))
+        {
+            return true;
+        }
+
+    } catch (const std::regex_error& e)
+    {
+        fprintf(stderr, "Error: Failed to check recipient: %s\n", e.what());
+        return false;
+    }
+
+    return false;
 }
 
 
@@ -1889,6 +1947,7 @@ int ReadConfig (const char *pszConfigFile)
         else if ( GetParam ("hostname",      szBuffer, pszValue, sizeof (g_szHostname),          g_szHostname));
         else if ( GetParam ("serveraddress", szBuffer, pszValue, sizeof (g_szSmtpServerAddress), g_szSmtpServerAddress));
         else if ( GetParam ("cipherlist",    szBuffer, pszValue, sizeof (g_szCipherList),        g_szCipherList));
+        else if ( GetParam ("rcptallowed",   szBuffer, pszValue, sizeof (g_szAllowedRecptsRegx), g_szAllowedRecptsRegx));
 
         else if ( GetParam ("tls", szBuffer, pszValue, sizeof (szNum), szNum))
         {
@@ -1973,9 +2032,7 @@ int main (int argc, const char *argv[])
     size_t FileSize = 0;
 
     /* Read optional config file if present */
-    char szConfigFile[] = "/etc/nshmailx.cfg";
-
-    ret = ReadConfig (szConfigFile);
+    ret = ReadConfig (g_szConfigFile);
 
     /* Set defaults from config overwritten by command line parameters */
 
@@ -2241,6 +2298,25 @@ int main (int argc, const char *argv[])
     if  ((IsNullStr (pszSendTo)) && (IsNullStr (pszCopyTo)) && (IsNullStr (pszBlindCopyTo)))
     {
         LogError ("No recipient specified");
+        goto Done;
+    }
+
+
+    if (!RecipientAllowed (pszSendTo))
+    {
+        LogError ("Recipient not allowed");
+        goto Done;
+    }
+
+    if (!RecipientAllowed (pszCopyTo))
+    {
+        LogError ("CopyTo recipient not allowed");
+        goto Done;
+    }
+
+    if (!RecipientAllowed (pszBlindCopyTo))
+    {
+        LogError ("BlindCopyTo recipient not allowed");
         goto Done;
     }
 
