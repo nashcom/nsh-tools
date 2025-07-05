@@ -1,8 +1,8 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 1.0.0 20.07.2024                                                #
-# (C) Copyright Daniel Nashed/NashCom 2024                                #
+# Version 1.0.8 05.07.2025                                                #
+# (C) Copyright Daniel Nashed/NashCom 2025                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
 #                                                                         #
@@ -101,11 +101,15 @@ Dump key and certificate information via OpenSSL code
 
 - Add allowed recipients settings cfg and documentation
 
+1.0.8 05.07.2025
+
+- Add port option
+
 */
 
 
 
-#define VERSION "1.0.7"
+#define VERSION "1.0.8"
 #define COPYRIGHT "Copyright 2024-2025, Nash!Com, Daniel Nashed"
 
 /* C++ includes */
@@ -154,6 +158,7 @@ char g_szErrorBuffer[4096] = {0};
 int  g_Verbose = 0;
 int  g_Trace   = 0;
 int  g_DumpPEM = 0;
+int  g_Port    = 25;
 
 bool g_bUseTLS  = true;
 bool g_bNoTLS13 = false;
@@ -316,6 +321,7 @@ void PrintHelpText (char *pszName)
 
     fprintf (stderr, "-server <FQDN/IP>      SMTP server DNS name or IP (Can be a relay host. By default MX record of the recipient's domain is used)\n");
     fprintf (stderr, "-host <FQDN>           Hostname to send in EHLO (by default use server's hostname)\n");
+    fprintf (stderr, "-port <number>         Port of SMTP server (Default: 25)\n");
     fprintf (stderr, "-from <email>          From address\n");
     fprintf (stderr, "-name <real name>      Name to add to the from address as a phrase\n");
     fprintf (stderr, "-to <email>            Send to recipient address\n");
@@ -1287,6 +1293,7 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszAttachmenFilePath,
                      const char *pszAttachmentName,
                      const char *pszCipherList,
+		     int  Port,
                      bool bUseTLS,
                      bool bNoTLS13,
                      bool bVerify,
@@ -1377,7 +1384,7 @@ int SendSmtpMessage (const char *pszHostname,
     if (!g_bSilent)
         printf ("Connecting to server ... %s\n", pszSmtpServerAddress);
 
-    snprintf (szConnect, sizeof (szConnect),  "%s:25", pszSmtpServerAddress);
+    snprintf (szConnect, sizeof (szConnect),  "%s:%d", pszSmtpServerAddress, Port);
 
     g_pBio = BIO_new_connect (szConnect);
 
@@ -1979,6 +1986,11 @@ int ReadConfig (const char *pszConfigFile)
             g_bSilent = atoi (szNum) ? true : false;
         }
 
+        else if ( GetParam ("port", szBuffer, pszValue, sizeof (szNum), szNum))
+        {
+            g_Port = atoi (szNum);
+        }
+
         else
         {
              fprintf (stdout, "Warning - Invalid configuration parameter: [%s]\n", szBuffer);
@@ -2005,6 +2017,7 @@ int main (int argc, const char *argv[])
     int rc  = 0;
     int ret = 1;
     int consumed = 1;
+    int Port     = 25;
 
     const char *pszSendTo            = NULL;
     const char *pszCopyTo            = NULL;
@@ -2036,6 +2049,7 @@ int main (int argc, const char *argv[])
 
     /* Set defaults from config overwritten by command line parameters */
 
+    Port     = g_Port;
     bUseTLS  = g_bUseTLS;
     bNoTLS13 = g_bNoTLS13;
     bVerify  = g_bVerify;
@@ -2115,6 +2129,19 @@ int main (int argc, const char *argv[])
                 goto InvalidSyntax;
 
             pszHostname = argv[consumed];
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-port"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            Port = atoi(argv[consumed]);
+	    if (0 == Port)
+	        Port = 25;
         }
 
         else if (0 == strcasecmp (argv[consumed], "-server"))
@@ -2388,6 +2415,7 @@ int main (int argc, const char *argv[])
                           pszAttachmenFilePath,
                           pszAttachmenName,
                           pszCipherList,
+			  Port,
                           bUseTLS,
                           bNoTLS13,
                           bVerify,
