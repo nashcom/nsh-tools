@@ -135,8 +135,8 @@ void PrintHelp()
     printf ("start        Starts this service\n");
     printf ("stop         Stops this service\n");
     printf ("restart      Restarts this service\n");
-    printf ("install      Installs program as a service\n");
-    printf ("uninstall    Removes program as service\n");
+    printf ("install      Installs program as a Windows service\n");
+    printf ("uninstall    Uninstalls Windows service\n");
     printf ("peshutdown   Invokes pre-shutdown operations manually\n");
     printf ("startall     Start all pre-shutdown configured services\n");
     printf ("reboot       Initiates server reboot\n");

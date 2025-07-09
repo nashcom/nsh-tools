@@ -19,7 +19,7 @@ There is an unreliable setting which can extend the time a bit by setting the `W
 
 Implement a service which supports Windows Pre-Shutdown events and let this service stop services cleanly.
 
-- Register for re-shutdown events
+- Register for pre-shutdown events
 - On a reboot or shutdown stop configured services before reporting back the pre-shutdown operations have been performed
 - Wait for a maximum of 10 minutes and terminates as soon all configured services are stopped
 
@@ -55,8 +55,8 @@ version      Prints version and exits
 start        Starts this service
 stop         Stops this service
 restart      Restarts this service
-install      Installs program as a service
-uninstall    Installs program service
+install      Installs program as a Windows service
+uninstall    Uninstalls Windows service
 peshutdown   Invokes pre-shutdown operations manually
 startall     Start all pre-shutdown configured services
 reboot       Initiates server reboot
