@@ -45,11 +45,15 @@ TARGET?=$(PROGRAM)
 
 all: $(TARGET)
 
-$(TARGET): $(PROGRAM).o
-	$(CC) -o $(PROGRAM) $(PROGRAM).o $(LIBS) $(SPECIAL_LINK_OPTIONS)
+$(TARGET): $(PROGRAM).o testing.o
+	$(CC) -o $(PROGRAM) $(PROGRAM).o testing.o $(LIBS) $(SPECIAL_LINK_OPTIONS)
 
-$(PROGRAM).o: $(PROGRAM).cpp
+
+$(PROGRAM).o: $(PROGRAM).cpp nshmailx.hpp testing.hpp
 	$(CC)  $(CFLAGS) $(PROGRAM).cpp $(SSL_INCLUDE_PATH) -O2
+
+testing.o: testing.cpp nshmailx.hpp testing.hpp
+	$(CC)  $(CFLAGS) testing.cpp $(SSL_INCLUDE_PATH) -O2
 
 install: all
 	sudo cp -f $(PROGRAM) /usr/bin/nshmailx

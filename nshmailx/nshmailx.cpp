@@ -1,7 +1,7 @@
 /*
 ###########################################################################
 # NashCom SMTP mail test/send tool (nshmailx)                             #
-# Version 1.0.8 05.07.2025                                                #
+# Version 1.0.9 12.07.2025                                                #
 # (C) Copyright Daniel Nashed/NashCom 2025                                #
 #                                                                         #
 # This application can be used to troubleshoot and test SMTP connections. #
@@ -105,11 +105,15 @@ Dump key and certificate information via OpenSSL code
 
 - Add port option
 
+1.0.9 12.07.2025
+
+- Add options to send test mails 
+
 */
 
 
 
-#define VERSION "1.0.8"
+#define VERSION "1.0.9"
 #define COPYRIGHT "Copyright 2024-2025, Nash!Com, Daniel Nashed"
 
 /* C++ includes */
@@ -138,6 +142,9 @@ Dump key and certificate information via OpenSSL code
 #include <openssl/core_names.h>
 #endif
 
+#include "nshmailx.hpp" 
+#include "testing.hpp" 
+
 #define MAX_BUFFER_LEN 65535
 #define MAX_STR        1024
 
@@ -155,16 +162,13 @@ char g_ProgramName[] = "nshmailx";
 char g_szConfigFile[] = "/etc/nshmailx.cfg";
 char g_szBuffer[MAX_BUFFER_LEN+1] = {0};
 char g_szErrorBuffer[4096] = {0};
-int  g_Verbose = 0;
-int  g_Trace   = 0;
-int  g_DumpPEM = 0;
-int  g_Port    = 25;
 
-bool g_bUseTLS  = true;
-bool g_bNoTLS13 = false;
-bool g_bVerify  = false;
-bool g_bECDSA   = false;
-bool g_bUTF8    = true;
+int    g_Verbose = 0;
+int    g_Trace   = 0;
+int    g_DumpPEM = 0;
+int    g_Port    = 25;
+size_t g_Options = 0;
+
 bool g_bSilent  = false;
 
 char g_szMailer[MAX_STR]            = "nshmailx";
@@ -336,10 +340,16 @@ void PrintHelpText (char *pszName)
     fprintf (stderr, "-cipher <cipher list>  OpenSSL cipher list string (colon separated) used for a connection\n");
     fprintf (stderr, "-NoTLS                 Disable TLS/SSL\n");
     fprintf (stderr, "-NoTLS13               Disable TLS 1.3\n");
+    fprintf (stderr, "-Verify                Verify TLS certificate\n");
     fprintf (stderr, "-v                     Verbose logging (specify twice for more verbose logging)\n");
     fprintf (stderr, "-silent                Only log errors to stderr\n");
     fprintf (stderr, "-trace                 Show input and output with client/server tags)\n");
     fprintf (stderr, "-pem                   Dump pem data with cert/key info (specify twice for PEM of certificate chain)\n");
+
+    fprintf (stderr, "\n");
+    fprintf (stderr, "-TestMessages          Number of test messages to send\n");
+    fprintf (stderr, "-TestBodySize <bytes>  Bytes to sent for each test message body\n");
+    fprintf (stderr, "-TestAttSize  <bytes>  Size of test attachment in bytes\n");
 
     fprintf (stderr, "\n");
     fprintf (stderr, "Note: Also supports Linux BSD mailx command line sending options\n");
@@ -540,7 +550,11 @@ int GetReturnCode()
 
     rc = atoi (g_szBuffer);
 
-    if ( (rc >= 200) && (rc < 400) )
+    if (221 == rc)
+    {
+        /* needs logging */
+    }
+    else if ( (rc >= 200) && (rc < 400) )
         return 0;
 
     if (pMessage)
@@ -1292,15 +1306,13 @@ int SendSmtpMessage (const char *pszHostname,
                      const char *pszBodyFile,
                      const char *pszAttachmenFilePath,
                      const char *pszAttachmentName,
+		     const char *pszAttachmentBuffer,
                      const char *pszCipherList,
-		     int  Port,
-                     bool bUseTLS,
-                     bool bNoTLS13,
-                     bool bVerify,
-                     bool bECDSA,
-                     bool bUTF8)
+		     int    Port,
+                     size_t Options)
 {
-    int rc = 600;
+    int ret = 0;
+    int rc  = 600;
     int CipherCount      = 0;
     int PriorityMX       = 0;
 
@@ -1326,6 +1338,7 @@ int SendSmtpMessage (const char *pszHostname,
     size_t MemSize = 0;
     size_t CountMX = 0;
     time_t tNow    = time (NULL);
+
 
     if (IsNullStr (pszHostname))
     {
@@ -1412,7 +1425,7 @@ int SendSmtpMessage (const char *pszHostname,
     if((rc = GetReturnCode()))
        goto Quit;
 
-    if (bUseTLS)
+    if (0 == (Options & NSHMAILX_OPTIONS_NO_TLS))
     {
         snprintf (g_szBuffer, sizeof (g_szBuffer), "STARTTLS%s", CRLF);
         SendBuffer (g_szBuffer);
@@ -1431,7 +1444,7 @@ int SendSmtpMessage (const char *pszHostname,
             goto Quit;
         }
 
-        if (bNoTLS13)
+        if (Options & NSHMAILX_OPTIONS_NO_TLS13)
         {
             SSL_CTX_set_options (g_pCtxSSL, SSL_OP_NO_TLSv1_3);
         }
@@ -1452,13 +1465,13 @@ int SendSmtpMessage (const char *pszHostname,
         SSL_set_tlsext_host_name (g_pSSL, pszSmtpServerAddress);
 
 #ifdef LIBRESSL_VERSION_NUMBER
-        if (bECDSA)
+        if (Options & NSHMAILX_OPTIONS_USE_ECDSA)
             LogError ("ECDSA option currently not supported on LibreSSL");
 #else
-        if (bECDSA)
+        if (Options & NSHMAILX_OPTIONS_USE_ECDSA)
             SSL_set1_sigalgs_list (g_pSSL, "ECDSA+SHA256");
 
-        if (bVerify)
+        if (Options & NSHMAILX_OPTIONS_VERIFY)
         {
             SSL_set_verify (g_pSSL, SSL_VERIFY_PEER, VerifyCallback);
         }
@@ -1599,7 +1612,7 @@ int SendSmtpMessage (const char *pszHostname,
     snprintf (g_szBuffer, sizeof (g_szBuffer), "--%s%s", szBoundary, CRLF);
     SendBuffer (g_szBuffer);
 
-    if (bUTF8 || (false == IsNullStr (pszBodyFile)))
+    if ((0 == (Options & NSHMAILX_OPTIONS_NO_UTF8))  || (false == IsNullStr (pszBodyFile)))
     {
         pBioMem = BIO_new (BIO_s_mem());
         if (NULL == pBioMem)
@@ -1696,7 +1709,7 @@ int SendSmtpMessage (const char *pszHostname,
     snprintf (g_szBuffer, sizeof (g_szBuffer), "%s", CRLF);
     SendBuffer (g_szBuffer);
 
-    if (pszAttachmenFilePath)
+    if ( (!IsNullStr(pszAttachmenFilePath)) || (!IsNullStr(pszAttachmentBuffer)) )
     {
         snprintf (g_szBuffer, sizeof (g_szBuffer), "--%s%s", szBoundary, CRLF);
         SendBuffer (g_szBuffer);
@@ -1706,12 +1719,12 @@ int SendSmtpMessage (const char *pszHostname,
 
         if (IsNullStr (pszAttachmentName))
         {
-            if (0 == strcmp (pszAttachmenFilePath, "-"))
+            if (IsNullStr (pszAttachmenFilePath))
             {
                 pszAttachmentName = szDefaultAttachmenName;
-            }
-            else
-            {
+	    }
+	    else
+	    {
                 /* Get attachment name from file path */
                 pszAttachmentName = pszAttachmenFilePath;
                 pStr = pszAttachmenFilePath;
@@ -1751,25 +1764,37 @@ int SendSmtpMessage (const char *pszHostname,
 
         pBioMem = BIO_push (pBioB64, pBioMem);
 
-        if (0 == strcmp (pszAttachmenFilePath, "-"))
+        if (!IsNullStr(pszAttachmentBuffer)) 
         {
-            pBioFile = BIO_new_fp (stdin, BIO_NOCLOSE);
-        }
-        else
+	    ret = BIO_write (pBioMem, pszAttachmentBuffer, strlen (pszAttachmentBuffer));
+	    if (ret <=0)
+	    {
+                LogError ("Cannot write attachment buffer\n");
+                goto Done;
+	    }
+	}
+	else
         {
-            pBioFile = BIO_new_file (pszAttachmenFilePath, "rb");
-        }
+            if (0 == strcmp (pszAttachmenFilePath, "-"))
+            {
+                pBioFile = BIO_new_fp (stdin, BIO_NOCLOSE);
+            }
+            else
+            {
+                pBioFile = BIO_new_file (pszAttachmenFilePath, "rb");
+            }
 
-        if (NULL == pBioFile)
-        {
-           LogError ("Cannot read file: %s\n", pszAttachmenFilePath);
-            goto Done;
-        }
+            if (NULL == pBioFile)
+            {
+                LogError ("Cannot read file: %s\n", pszAttachmenFilePath);
+                goto Done;
+            }
 
-        CopyFromToBio (pBioFile, pBioMem);
+            CopyFromToBio (pBioFile, pBioMem);
 
-        BIO_free_all (pBioFile);
-        pBioFile = NULL;
+            BIO_free_all (pBioFile);
+            pBioFile = NULL;
+	}
 
         BIO_flush (pBioMem);
         MemSize = BIO_get_mem_data (pBioMem, &pMem);
@@ -1818,6 +1843,14 @@ Done:
     {
         BIO_free_all (pBioFile);
         pBioFile = NULL;
+    }
+
+    if (g_pSSL)
+    {
+        SSL_shutdown(g_pSSL);
+        SSL_free(g_pSSL);
+        g_pSSL = NULL;
+        g_pBio = NULL; // already freed by SSL_free
     }
 
     if (g_pBio)
@@ -1958,27 +1991,32 @@ int ReadConfig (const char *pszConfigFile)
 
         else if ( GetParam ("tls", szBuffer, pszValue, sizeof (szNum), szNum))
         {
-            g_bUseTLS = atoi (szNum) ? true : false;
+            if (0 == atoi (szNum))
+	        g_Options |= NSHMAILX_OPTIONS_NO_TLS;
         }
 
         else if ( GetParam ("notls13", szBuffer, pszValue, sizeof (szNum), szNum))
         {
-            g_bNoTLS13 = atoi (szNum) ? true : false;
+            if (atoi (szNum))
+                g_Options |= NSHMAILX_OPTIONS_NO_TLS13; 
         }
 
         else if ( GetParam ("verify", szBuffer, pszValue, sizeof (szNum), szNum))
         {
-            g_bVerify = atoi (szNum) ? true : false;
+            if (atoi (szNum))
+                g_Options |= NSHMAILX_OPTIONS_VERIFY;
         }
 
         else if ( GetParam ("ecdsa", szBuffer, pszValue, sizeof (szNum), szNum))
         {
-            g_bECDSA = atoi (szNum) ? true : false;
+            if (atoi (szNum))
+                g_Options |= NSHMAILX_OPTIONS_USE_ECDSA;
         }
 
         else if ( GetParam ("utf8", szBuffer, pszValue, sizeof (szNum), szNum))
         {
-            g_bUTF8 = atoi (szNum) ? true : false;
+            if (0 == atoi (szNum))
+                g_Options |= NSHMAILX_OPTIONS_NO_UTF8;
         }
 
         else if ( GetParam ("silent", szBuffer, pszValue, sizeof (szNum), szNum))
@@ -2026,7 +2064,7 @@ int main (int argc, const char *argv[])
     const char *pszBody              = NULL;
     const char *pszBodyFile          = NULL;
     const char *pszAttachmenFilePath = NULL;
-    const char *pszAttachmenName     = NULL;
+    const char *pszAttachmentName    = NULL;
 
     /* Set defaults from config overwritten by command line parameters */
     const char *pszFrom              = g_szFrom;
@@ -2036,25 +2074,19 @@ int main (int argc, const char *argv[])
     const char *pszSmtpServerAddress = g_szSmtpServerAddress;
     const char *pszCipherList        = g_szCipherList;
 
-    bool bUseTLS  = true;
-    bool bNoTLS13 = false;
-    bool bVerify  = false;
-    bool bECDSA   = false;
-    bool bUTF8    = true;
-
+    size_t Options  = 0;
     size_t FileSize = 0;
+    size_t TestMessageCount    = 0;
+    size_t TestMessageBodySize = 0;
+    size_t TestMesageAttSize   = 0;
 
     /* Read optional config file if present */
     ret = ReadConfig (g_szConfigFile);
 
     /* Set defaults from config overwritten by command line parameters */
 
-    Port     = g_Port;
-    bUseTLS  = g_bUseTLS;
-    bNoTLS13 = g_bNoTLS13;
-    bVerify  = g_bVerify;
-    bECDSA   = g_bECDSA;
-    bUTF8    = g_bUTF8;
+    Port    = g_Port;
+    Options = g_Options;
 
     while (argc > consumed)
     {
@@ -2077,22 +2109,22 @@ int main (int argc, const char *argv[])
 
         else if (0 == strcasecmp (argv[consumed], "-notls"))
         {
-            bUseTLS = false;
+            Options |= NSHMAILX_OPTIONS_NO_TLS; 
         }
 
         else if (0 == strcasecmp (argv[consumed], "-notls13"))
         {
-            bNoTLS13 = true;
+            Options |= NSHMAILX_OPTIONS_NO_TLS13; 
         }
 
         else if (0 == strcasecmp (argv[consumed], "-ec"))
         {
-            bECDSA = true;
+            Options |= NSHMAILX_OPTIONS_USE_ECDSA;            
         }
 
         else if (0 == strcasecmp (argv[consumed], "-verify"))
         {
-            bVerify = true;
+            Options |= NSHMAILX_OPTIONS_VERIFY; 
         }
 
         else if (0 == strcasecmp (argv[consumed], "-silent"))
@@ -2283,7 +2315,7 @@ int main (int argc, const char *argv[])
             if (argv[consumed][0] == '-')
                 goto InvalidSyntax;
 
-            pszAttachmenName = argv[consumed];
+            pszAttachmentName = argv[consumed];
         }
 
         else if (0 == strcasecmp (argv[consumed], "-cipher"))
@@ -2296,6 +2328,51 @@ int main (int argc, const char *argv[])
                 goto InvalidSyntax;
 
             pszCipherList = argv[consumed];
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-TestMessages"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            TestMessageCount = atoi(argv[consumed]);
+            if (0 == TestMessageCount)
+	    {
+                goto InvalidSyntax;
+	    }
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-TestBodySize"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            TestMessageBodySize= atoi(argv[consumed]);
+            if (0 == TestMessageBodySize)
+            {
+                goto InvalidSyntax;
+            }
+        }
+
+        else if (0 == strcasecmp (argv[consumed], "-TestAttSize"))
+        {
+            consumed++;
+            if (consumed >= argc)
+                goto InvalidSyntax;
+            if (argv[consumed][0] == '-')
+                goto InvalidSyntax;
+
+            TestMesageAttSize = atoi(argv[consumed]);
+            if (0 == TestMesageAttSize)
+            {
+                goto InvalidSyntax;
+            }
         }
 
         else if (0 == strcasecmp (argv[consumed], "--"))
@@ -2401,26 +2478,49 @@ int main (int argc, const char *argv[])
         }
     }
 
-    rc = SendSmtpMessage (pszHostname,
-                          pszMailer,
-                          pszSmtpServerAddress,
-                          pszFrom,
-                          pszFromName,
-                          pszSendTo,
-                          pszCopyTo,
-                          pszBlindCopyTo,
-                          pszSubject,
-                          pszBody,
-                          pszBodyFile,
-                          pszAttachmenFilePath,
-                          pszAttachmenName,
-                          pszCipherList,
-			  Port,
-                          bUseTLS,
-                          bNoTLS13,
-                          bVerify,
-                          bECDSA,
-                          bUTF8);
+    if (TestMessageCount)
+    {
+        rc = SendTestMessages (pszHostname,
+                               pszMailer,
+                               pszSmtpServerAddress,
+                               pszFrom,
+                               pszFromName,
+                               pszSendTo,
+                               pszCopyTo,
+                               pszBlindCopyTo,
+                               pszSubject,
+                               pszBody,
+                               pszBodyFile,
+                               pszAttachmenFilePath,
+                               pszAttachmentName,
+			       "",
+                               pszCipherList,
+                               Port,
+                               Options,
+                               TestMessageCount, 
+                               TestMessageBodySize, 
+                               TestMesageAttSize);
+    }
+    else	  
+    {
+        rc = SendSmtpMessage (pszHostname,
+                              pszMailer,
+                              pszSmtpServerAddress,
+                              pszFrom,
+                              pszFromName,
+                              pszSendTo,
+                              pszCopyTo,
+                              pszBlindCopyTo,
+                              pszSubject,
+                              pszBody,
+                              pszBodyFile,
+                              pszAttachmenFilePath,
+                              pszAttachmentName,
+			      NULL,
+                              pszCipherList,
+		              Port,
+                              Options);
+    }
 
     if (0 == rc)
         ret = 0;
