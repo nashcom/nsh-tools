@@ -2478,6 +2478,12 @@ int main (int argc, const char *argv[])
         }
     }
 
+
+// --- Main Logic ---
+
+     // Always init random generator
+     srand((unsigned int) time(NULL));
+
     if (TestMessageCount)
     {
         rc = SendTestMessages (pszHostname,
