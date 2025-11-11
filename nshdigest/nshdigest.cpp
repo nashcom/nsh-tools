@@ -11,6 +11,10 @@
 #include <sys/time.h>
 #endif
 
+
+#define BytesInOneMB  1048576
+
+
 size_t nsh_get_ostimer()
 {
 #ifdef _WIN32
@@ -26,6 +30,7 @@ size_t nsh_get_ostimer()
 #endif
 }
 
+
 void PrintErrorOpenSSL (const char *pszErrorText)
 {
     if (pszErrorText)
@@ -34,11 +39,13 @@ void PrintErrorOpenSSL (const char *pszErrorText)
     ERR_print_errors_fp (stderr);
 }
 
-size_t FileDigest (const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const char *pszInputFile, unsigned int MaxLen, char *retpszHash)
+
+size_t FileDigest (size_t BufferSizeKB, const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const char *pszInputFile, unsigned int MaxLen, char *retpszHash)
 {
     size_t BytesRead   = 0;
     size_t BytesTotal  = 0;
-    size_t MbSec       = 0;
+    size_t BufferSize  = 0;
+    double MbSec       = 0;
     char   *p          = NULL;
     FILE   *fpInput    = NULL;
 
@@ -46,7 +53,7 @@ size_t FileDigest (const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const cha
     unsigned int md_len = 0;
     unsigned int i      = 0;
     unsigned char MdValue[EVP_MAX_MD_SIZE+1] = {0};
-    unsigned char szBuffer [256000] = {0};
+    unsigned char *pBuffer = NULL;
 
     size_t BeginTicks = 0;
     size_t EndTicks   = 0;
@@ -64,6 +71,16 @@ size_t FileDigest (const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const cha
         return 0;
 
     if (NULL == pszInputFile)
+        return 0;
+
+    if (0 == BufferSizeKB)
+        BufferSizeKB = 1024;
+
+    BufferSize = 1024 * BufferSizeKB;
+
+    pBuffer = (unsigned char *) malloc (BufferSize);
+
+    if (NULL == pBuffer)
         return 0;
 
     fpInput = fopen (pszInputFile, "rb");
@@ -84,9 +101,9 @@ size_t FileDigest (const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const cha
         goto Done;
     }
 
-    while ((BytesRead = fread (szBuffer, 1, sizeof (szBuffer), fpInput)))
+    while ((BytesRead = fread (pBuffer, 1, BufferSize, fpInput)))
     {
-        if (!EVP_DigestUpdate (pMDCtx, szBuffer, BytesRead))
+        if (!EVP_DigestUpdate (pMDCtx, pBuffer, BytesRead))
         {
             PrintErrorOpenSSL ("Cannot update digest");
             goto Done;
@@ -124,11 +141,15 @@ size_t FileDigest (const char *pszEvpTypeMD, const EVP_MD *pEvpTypeMD, const cha
 
     if (DiffTicks)
     {
-        MbSec = (1000 * BytesTotal / DiffTicks) / 1048576;
-        printf ("%6s, %4zu MB/sec, %6zu ms, Hash: %s\n", pszEvpTypeMD, MbSec, DiffTicks, retpszHash);
+        MbSec = (1000.0 * (double) BytesTotal / (double) DiffTicks) / (double) BytesInOneMB;
+        printf ("%6s, %5.1f MB/sec, %5.1f sec, %s\n", pszEvpTypeMD, MbSec, (double) DiffTicks / 1000.0, retpszHash);
     }
 
 Done:
+
+    if (pBuffer)
+        free (pBuffer);
+
 
     if (pMDCtx)
     {
@@ -145,29 +166,49 @@ Done:
     return BytesTotal;
 }
 
-size_t TestDigest (const char* pszFileName)
+
+size_t TestDigest (const char* pszFileName, size_t BufferSizeKB)
 {
-    size_t FileSize = 0;
+    size_t FileSize   = 0;
+    size_t BeginTicks = 0;
+    size_t EndTicks   = 0;
+    size_t DiffTicks  = 0;
+
     char szHash[256] = {0};
 
-    FileSize = FileDigest ("MD5",    EVP_md5(),    pszFileName, sizeof (szHash), szHash);
-    FileSize = FileDigest ("SHA1",   EVP_sha1(),   pszFileName, sizeof (szHash), szHash);
-    FileSize = FileDigest ("SHA256", EVP_sha256(), pszFileName, sizeof (szHash), szHash);
-    FileSize = FileDigest ("SHA384", EVP_sha384(), pszFileName, sizeof (szHash), szHash);
-    FileSize = FileDigest ("SHA512", EVP_sha512(), pszFileName, sizeof (szHash), szHash);
+    printf ("\n");
+
+    BeginTicks = nsh_get_ostimer();
+
+    FileSize = FileDigest (BufferSizeKB, "MD5",    EVP_md5(),    pszFileName, sizeof (szHash), szHash);
+    FileSize = FileDigest (BufferSizeKB, "SHA1",   EVP_sha1(),   pszFileName, sizeof (szHash), szHash);
+    FileSize = FileDigest (BufferSizeKB, "SHA256", EVP_sha256(), pszFileName, sizeof (szHash), szHash);
+    FileSize = FileDigest (BufferSizeKB, "SHA384", EVP_sha384(), pszFileName, sizeof (szHash), szHash);
+    FileSize = FileDigest (BufferSizeKB, "SHA512", EVP_sha512(), pszFileName, sizeof (szHash), szHash);
+
+    EndTicks = nsh_get_ostimer();
+    DiffTicks = EndTicks - BeginTicks;
+
+    printf ("\nFile Size: %.1f MB, Buffer Size: %lu KB, %.1f seconds\n\n", (double) FileSize / (double) BytesInOneMB, BufferSizeKB, (double) DiffTicks / 1000.0);
 
     return FileSize;
 }
 
 int main (int argc, char* argv[])
 {
+    size_t BufferSizeKB = 1024;
+
+
     if (argc < 2)
     {
-        printf ("Usage: %s <file> \n", argv[0]);
+        printf ("\nUsage: %s <file> [buffer size in KB]\n\n", argv[0]);
         return 1;
     }
 
-    if (TestDigest (argv[1]))
+    if (argc > 3)
+        BufferSizeKB = atoi (argv[2]);
+
+    if (TestDigest (argv[1], BufferSizeKB))
         return 0;
     else
         return 1;
